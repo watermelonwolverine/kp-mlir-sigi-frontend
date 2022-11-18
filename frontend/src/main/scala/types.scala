@@ -4,46 +4,51 @@ package de.cfaed.kitten
 
 package types {
 
-  import de.cfaed.kitten.ast.*
+  import ast.*
 
   import scala.annotation.tailrec
 
-  sealed trait KDataType
+  /** Types of stack values. */
+  sealed trait KDataType {
+    override def toString: String = this match
+      case KInt => "int"
+      case KString => "str"
+      case KFun(stackType) => stackType.toString
+  }
 
   case object KInt extends KDataType
 
   case object KString extends KDataType
 
-  case class KFun(parms: List[KDataType], result: KDataType) extends KDataType
+  /** An unapplied function type. */
+  case class KFun(stack: StackType) extends KDataType
 
-
+  /** Types of a term, a stack function. */
   case class StackType(consumes: List[KDataType],
                        produces: List[KDataType]) {
 
     override def toString: String = {
       consumes.mkString(", ") + " -> " + produces.mkString(", ")
     }
-
-
   }
 
   object StackType {
-    def push(d: KDataType) = StackType(consumes = Nil, produces = List(d))
+    def pushOne(d: KDataType): StackType = StackType(consumes = Nil, produces = List(d))
   }
 
 
   val BinOpType = StackType(consumes = List(KInt, KInt), produces = List(KInt))
 
-  def dotype(node: KExpr): Either[KittenTypeError, StackType] = node match
-    case Number(_) => Right(StackType.push(KInt))
-    case Var(name) => {
+  def computeType(node: KExpr): Either[KittenTypeError, StackType] = node match
+    case Number(_) => Right(StackType.pushOne(KInt))
+    case FunApply(name) => {
       val BinOp = "[*+-/%]".r
       name match
         case BinOp() => Right(BinOpType)
-        case _ => Right(StackType.push(KInt)) // TODO
+        case _ => Right(StackType.pushOne(KInt)) // TODO
     }
     case e@Chain(left, right) => {
-      (dotype(left), dotype(right)) match
+      (computeType(left), computeType(right)) match
         case (Right(ta), Right(tb)) => {
 
 
@@ -64,7 +69,7 @@ package types {
 
           chainTypeCheck(ta.produces, tb.consumes)
         }
-        case (a, b) => a.swap.orElse(b.swap).swap
+        case (a, b) => a.swap.orElse(b.swap).swap // a left
     }
 
 }

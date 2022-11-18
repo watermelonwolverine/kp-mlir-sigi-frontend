@@ -1,11 +1,12 @@
 package de.cfaed.kitten
 
 import ast.KExpr
+import eval.{Env, KValue}
+import types.*
 
-import de.cfaed.kitten.types.*
 
-
-trait KittenCompilationError
+trait KittenError
+trait KittenCompilationError extends KittenError
 
 case class KittenParseError(msg: String) extends KittenCompilationError
 
@@ -28,4 +29,12 @@ object KittenTypeError {
                   b: KDataType): KittenTypeError = KittenTypeError(
     s"Mismatched types: $t1 is not compatible with $t2"
   )
+}
+
+
+case class KittenEvalError(msg: String) extends KittenError
+object KittenEvalError {
+  def undef(name: String): KittenEvalError = KittenEvalError(s"Undefined name $name")
+  def stackTypeError(t: StackType, env:Env): KittenEvalError =
+    KittenEvalError(s"Cannot evaluate function of type $t with stack ${env.stackToString}")
 }

@@ -20,22 +20,22 @@ package ast {
   sealed trait KExpr extends KNode {
     override def toString: String = this match
       case Chain(a, b) => s"($a $b)"
-      case Var(name) => name
+      case FunApply(name) => name
       case Number(value) => value.toString
   }
 
   case class Chain(a: KExpr, b: KExpr) extends KExpr
   case class Number(value: Int) extends KExpr
-  case class Var(name: String) extends KExpr
+  case class FunApply(name: String) extends KExpr
 
 
   object KittenParser extends Parsers with PackratParsers {
     override type Elem = KToken
 
     def expr: Parser[KExpr] =
-      accept("identifier", { case ID(name) => Var(name) })
+      accept("identifier", { case ID(name) => FunApply(name) })
         | accept("number", { case NUMBER(v) => Number(v) })
-        | (LPAREN ~ (exprSeq | accept("operator", { case OP(n) => Var(n) })) ~ RPAREN
+        | (LPAREN ~ (exprSeq | accept("operator", { case OP(n) => FunApply(n) })) ~ RPAREN
         ^^ { case _ ~ e ~ _ => e })
 
     def exprSeq: Parser[KExpr] =
