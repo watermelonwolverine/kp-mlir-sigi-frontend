@@ -1,6 +1,6 @@
 package de.cfaed.kitten
 
-import ast.KExpr
+import ast.{KExpr, NameTopN}
 import eval.{Env, KValue}
 import types.*
 
@@ -10,6 +10,11 @@ trait KittenCompilationError extends KittenError
 
 case class KittenParseError(msg: String) extends KittenCompilationError
 
+object KittenParseError {
+  def namesShouldBeUnique(node: NameTopN) = KittenParseError(
+    s"Names should be unique: ${node.names}"
+  )
+}
 case class KittenLexerError(msg: String) extends KittenCompilationError
 
 
@@ -28,7 +33,7 @@ object KittenTypeError {
                   t2: StackType,
                   a: KDataType,
                   b: KDataType): KittenTypeError = KittenTypeError(
-    s"Mismatched types: $t1 is not compatible with $t2"
+    s"Mismatched types: $a is not compatible with $b"
   )
 }
 
@@ -36,6 +41,6 @@ object KittenTypeError {
 case class KittenEvalError(msg: String) extends KittenError
 object KittenEvalError {
   def undef(name: String): KittenEvalError = KittenEvalError(s"Undefined name '$name'")
-  def stackTypeError(t: StackType, env:Env): KittenEvalError =
+  def stackTypeError(t: StackType, env: Env): KittenEvalError =
     KittenEvalError(s"Cannot evaluate function of type ($t) with stack ${env.stackToString}")
 }

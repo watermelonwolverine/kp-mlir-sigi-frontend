@@ -5,8 +5,7 @@ package de.cfaed.kitten
 package types {
 
   import ast.*
-
-  import de.cfaed.kitten.eval.Env
+  import eval.Env
 
   import java.util.Objects
   import scala.annotation.tailrec
@@ -17,7 +16,8 @@ package types {
     override def toString: String = this match
       case KInt => "int"
       case KString => "str"
-      case KFun(stackType) => stackType.toString
+      case KBool => "bool"
+      case KFun(stackType) => "(" + stackType.toString + ")"
       case tv: KTypeVar => tv.name
       case iv: KInferenceVar => iv.origin.name + System.identityHashCode(this)
 
@@ -25,12 +25,25 @@ package types {
 
   // both use identity semantics for Object::equals
   class KTypeVar(val name: String) extends KDataType
+  object KTypeVar {
+    def typeVarGenerator(): () => KTypeVar = {
+      val names = "abcdefghijklmnopqrstuv"
+      var i = 0
+      () => {
+        val k = i
+        i += 1
+        KTypeVar("'" + names(k % names.length))
+      }
+    }
+  }
   class KInferenceVar(val origin: KTypeVar) extends KDataType {
     var instantiation: KDataType = _
   }
 
-  case object KInt extends KDataType
-  case object KString extends KDataType
+  sealed trait KPrimitive[T] extends KDataType
+  case object KInt extends KPrimitive[Int]
+  case object KBool extends KPrimitive[Boolean]
+  case object KString extends KPrimitive[String]
 
   /** An unapplied function type. */
   case class KFun(stack: StackType) extends KDataType
@@ -39,70 +52,89 @@ package types {
   case class StackType(consumes: List[KDataType] = Nil,
                        produces: List[KDataType] = Nil) {
 
-    override def toString: String = consumes.mkString(", ") + " -> " + produces.mkString(", ")
+    override def toString: String = (consumes.mkString(", ") + " -> " + produces.mkString(", ")).trim
+
+    def map(f: KDataType => KDataType): StackType = StackType(
+      produces = this.produces.map(f),
+      consumes = this.consumes.map(f),
+    )
+
   }
 
   object StackType {
     def pushOne(d: KDataType): StackType = StackType(produces = List(d))
-    val empty: StackType = StackType()
+    def symmetric(types: List[KDataType]): StackType = StackType(types, types)
+    def symmetric1(t: KDataType): StackType = symmetric(List(t))
+
     def generic(f: (() => KTypeVar) => StackType): StackType = {
-      val names = "abcdefghijklmnopqrstuv"
-      var i = 0
-      f(() => {
-        val k = i
-        i += 1
-        KTypeVar("'" + names(k % names.length))
-      })
+      f(KTypeVar.typeVarGenerator())
     }
 
     def generic1(f: KTypeVar => StackType): StackType = generic(newTypeVar => f(newTypeVar()))
+
+    // Relabel distinct tvars
+    def canonicalize(st: StackType): StackType = {
+      val tvars: mutable.Map[KTypeVar, KTypeVar] = mutable.Map()
+      val tvarMaker = KTypeVar.typeVarGenerator()
+
+      def doCanonizeStackT: StackType => StackType = _.map(doCanonize)
+
+      def doCanonize(t: KDataType): KDataType = t match
+        case tv: KTypeVar =>
+          tvars.getOrElseUpdate(tv, tvarMaker())
+        case _: KInferenceVar => throw IllegalStateException("ivars should not be present in grounded terms")
+        case KFun(st) => KFun(doCanonizeStackT(st))
+        case t => t
+
+      doCanonizeStackT(st)
+    }
   }
 
 
   val BinOpType = StackType(consumes = List(KInt, KInt), produces = List(KInt))
+  val UnaryOpType = StackType(consumes = List(KInt), produces = List(KInt))
 
   private[types] class TypingCtx {
-    private[types] val identities = mutable.Set[(KInferenceVar, KDataType)]()
 
-
-    def instantiate(st: StackType): StackType = {
-      val map = mutable.Map[KTypeVar, KInferenceVar]()
-
+    /** Replace type vars with fresh inference vars. */
+    def prepareInference(map: mutable.Map[KTypeVar, KInferenceVar])(ty: StackType): StackType = {
 
       def instImpl(t: KDataType): KDataType =
         t match
           case t: KTypeVar => map.getOrElseUpdate(t, KInferenceVar(t))
-          case KFun(StackType(consumes, produces)) => KFun(StackType(
-            consumes.map(instImpl), produces.map(instImpl)
-          ))
+          case KFun(st) => KFun(st.map(instImpl))
           case t => t
 
-
-      StackType(
-        st.consumes.map(instImpl),
-        st.produces.map(instImpl)
-      )
+      ty.map(instImpl)
     }
 
-    def ground(st: StackType): StackType = {
-      StackType(st.consumes.map(ground), st.produces.map(ground))
-    }
-
-    def ground(t: KDataType): KDataType = {
+    /** Replace inference variables with their instantiation.
+      * Uninstantiated variables are replaced by fresh type vars.
+      */
+    def ground(st: StackType, env: TypingScope): (StackType, TypingScope) = {
+      val instMap = mutable.Map[KInferenceVar, KDataType]()
+      val tvGen = KTypeVar.typeVarGenerator()
 
       def groundImpl(t: KDataType): KDataType =
         t match
           case t: KInferenceVar =>
-            Option(t.instantiation).map(groundImpl).getOrElse(t.origin)
-          case KFun(StackType(consumes, produces)) =>
-            KFun(StackType(
-              consumes = consumes.map(groundImpl),
-              produces = produces.map(groundImpl)
-            ))
+            instMap.get(t) match
+              case Some(inst) => inst
+              case None =>
+                val inst = Option(t.instantiation).map(groundImpl).getOrElse(tvGen())
+                instMap.put(t, inst)
+                inst
+          case KFun(st) => KFun(st.map(groundImpl))
           case t => t
 
-      groundImpl(t)
+      val groundSt: StackType => StackType = _.map(groundImpl)
+
+      val newScope = TypingScope(
+        bindings = env.bindings.view.mapValues(groundSt).toMap,
+      )
+      (groundSt(st), newScope)
     }
+
 
     def unify(a: KDataType, b: KDataType): Boolean =
       if a == b then true
@@ -111,11 +143,7 @@ package types {
           if a.instantiation != null then
             return unify(a.instantiation, b)
 
-          this.identities.add((a, b))
-          if b.isInstanceOf[KInferenceVar] then
-            this.identities.add((b.asInstanceOf[KInferenceVar], a))
-          else
-            a.instantiation = b
+          a.instantiation = b
           true
 
         (a, b) match
@@ -124,51 +152,52 @@ package types {
           case _ => false //todo structured types
   }
 
-  case class SymbolicEnv(val stack: List[KDataType], val bindings: Map[String, StackType]) {
+  case class TypingScope(bindings: Map[String, StackType])
 
-  }
-
-  def computeType(env: SymbolicEnv)(node: KExpr): Either[KittenTypeError, (StackType, SymbolicEnv)] = node match
-    case Number(_) => Right((StackType.pushOne(KInt), env))
-    case NameTop(name) =>
-      val newEnv = env.copy(bindings = env.bindings.+((name, hd)))
-      env.stack match
-        case hd :: _ => Right((StackType(List(hd), List(hd)), env.copy(bindings = env.bindings.+((name, StackType.pushOne(hd))))))
-        case _ => Right((StackType.generic1(t => StackType(List(t), List(t))), env)) // todo env should use a binding for "any type" or so
+  def computeType(env: TypingScope)(node: KExpr): Either[KittenTypeError, (StackType, TypingScope)] = node match
+    case PushPrim(ty, _) => Right((StackType.pushOne(ty), env))
+    case Quote(term) => computeType(env)(term).map(t => (StackType.pushOne(KFun(t._1)), env))
+    case node@NameTopN(names) =>
+      val st = node.stackType
+      Right((
+        st,
+        env.copy(bindings = names.zip(st.consumes.map(StackType.pushOne)).toMap ++ env.bindings)
+      ))
     case FunApply(name) =>
-      env.bindings.get(name).toRight(KittenTypeError.undef(name))
+      env.bindings.get(name).toRight(KittenTypeError.undef(name)).map(st => (st, env))
 
 
     case e@Chain(left, right) =>
+      val ctx = TypingCtx()
+      val toIvars = ctx.prepareInference(mutable.Map())
       for {
         left <- computeType(env)(left)
-        right <- computeType(left._2)(right)
-      } yield {
-        val ctx = TypingCtx()
+        right <- computeType(left._2.copy(left._2.bindings.view.mapValues(toIvars).toMap))(right)
+        newEnv <- {
 
-        val ta = ctx.instantiate(left._1)
-        val tb = ctx.instantiate(right._1)
+          val (ta, tb) = (toIvars(left._1), toIvars(right._1))
+          // println(s"Chain ($ta) ($tb) in env ${right._2.bindings -- Env.default.toSymbolic.bindings.keys}")
 
-        @tailrec
-        def chainTypeCheck(ctx: TypingCtx)(produced: List[KDataType],
-                                           consumed: List[KDataType]): Either[KittenTypeError, StackType] = {
-          (produced, consumed) match
-            case (a :: atl, b :: btl) =>
-              if (ctx.unify(a, b)) chainTypeCheck(ctx)(atl, btl)
-              else Left(KittenTypeError.cannotApply(e, ta, tb, a, b))
-            case (Nil, Nil) => Right(StackType(consumes = Nil, produces = tb.produces)) // fully saturated call
-            case (Nil, notApplied) => Right(StackType(consumes = notApplied, produces = tb.produces))
-            case (notConsumed, Nil) =>
-              Right(StackType(
-                consumes = Nil,
-                produces = notConsumed ::: tb.produces,
-              ))
+          @tailrec
+          def chainTypeCheck(ctx: TypingCtx)(produced: List[KDataType],
+                                             consumed: List[KDataType]): Either[KittenTypeError, StackType] = {
+            (produced, consumed) match
+              case (a :: atl, b :: btl) =>
+                if (ctx.unify(a, b)) chainTypeCheck(ctx)(atl, btl)
+                else Left(KittenTypeError.cannotApply(e, ta, tb, a, b))
+              case (Nil, Nil) => Right(StackType(consumes = ta.consumes, produces = tb.produces)) // fully saturated call
+              case (Nil, notApplied) => Right(StackType(consumes = ta.consumes ::: notApplied, produces = tb.produces))
+              case (notConsumed, Nil) =>
+                Right(StackType(
+                  consumes = ta.consumes,
+                  produces = notConsumed ::: tb.produces,
+                ))
+          }
+
+          chainTypeCheck(ctx)(ta.produces, tb.consumes)
+            .map(st => ctx.ground(st, right._2))
         }
+      } yield newEnv
 
-        chainTypeCheck(ctx)(
-          ta.produces,
-          tb.consumes
-        ).map(ctx.ground)
-      }
 
 }

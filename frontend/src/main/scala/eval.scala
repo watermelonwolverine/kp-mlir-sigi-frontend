@@ -5,8 +5,10 @@ import java.util.Scanner
 
 package eval {
 
+  import de.cfaed.kitten.ast as parser
   import ast.*
-  import types.{BinOpType, StackType}
+  import types.{BinOpType, KDataType, KFun, KInt, KPrimitive, StackType, TypingScope}
+  import types.StackType.canonicalize
 
   import scala.annotation.tailrec
 
@@ -20,12 +22,12 @@ package eval {
       if (line == "exit") return
 
       val result: Either[KittenError, Env] = for {
-        parsed <- ast.parse(line)
-        t <- types.computeType(parsed.ast)
+        parsed <- parser.parse(line)
+        t <- types.computeType(env.toSymbolic)(parsed.ast)
         //println(t)
-        env2 <- eval(env)(parsed.ast)
+        env2 <- eval(parsed.ast)(env)
       } yield {
-        println(s"  ${parsed.ast}    : $t")
+        println(s"  ${parsed.ast}    : ${canonicalize(t._1)}")
         println(s"  ${env2.stackToString}")
         env2
       }
@@ -48,10 +50,26 @@ package eval {
 
   sealed trait KValue {
     override def toString: String = this match
-      case VNum(num) => num.toString
-      case VFun(name, t, _) => s"($name : $t)"
+      case VPrimitive(_, value) => value.toString
+      case VFun(name, t, _) => s"(${name.getOrElse("unnamed")} : $t)"
+
+    def stackType: StackType = this match
+      case VPrimitive(t, _) => StackType.pushOne(t)
+      case VFun(_, st, _) => st
+
+    def dataType: KDataType = this match
+      case VPrimitive(t, _) => t
+      case VFun(_, st, _) => KFun(st)
+
   }
-  case class VNum(num: Int) extends KValue
+  case class VPrimitive[T](ty: KPrimitive[T], v: T) extends KValue
+  object VNum {
+    def apply(i: Int): VPrimitive[Int] = VPrimitive(KInt, i)
+    def unapply(prim: VPrimitive[_]): Option[Int] = prim match
+      case VPrimitive(KInt, v) => Some(v)
+      case _ => None
+  }
+
   case class VFun(name: Option[String], t: StackType, definition: Env => EvalResult) extends KValue
 
 
@@ -61,12 +79,17 @@ package eval {
 
     def push(v: KValue): Env = Env(vars, v :: stack)
 
-    def stackToString: String = stack.mkString("[", " :: ", "]")
+    def stackToString: String = stack.reverseIterator.mkString("[", ", ", "]")
+    def toSymbolic: TypingScope = {
+      TypingScope(
+        bindings = vars.map((k, v) => (k, v.stackType)),
+      )
+    }
   }
 
   object Env {
     private def binOp(name: String, definition: (Int, Int) => Int): (String, VFun) = {
-      (name, VFun(Some(name), types.BinOpType, env => {
+      fun(name, types.BinOpType, t => env => {
         env.stack match
           case VNum(a) :: VNum(b) :: tail =>
             try {
@@ -75,23 +98,73 @@ package eval {
             } catch {
               case e: Exception => Left(KittenEvalError(s"Error executing op $name: ${e.getMessage}"))
             }
-          case _ =>
-            Left(KittenEvalError.stackTypeError(types.BinOpType, env))
-      }))
+          case _ => Left(KittenEvalError.stackTypeError(t, env))
+      })
+    }
+
+    private def unaryOp(name: String, definition: Int => Int): (String, VFun) = {
+      fun(name, types.UnaryOpType, t => env => {
+        env.stack match
+          case VNum(a) :: tail =>
+            try {
+              val res = definition(a)
+              Right(env.copy(stack = VNum(res) :: tail))
+            } catch {
+              case e: Exception => Left(KittenEvalError(s"Error executing op $name: ${e.getMessage}"))
+            }
+          case _ => Left(KittenEvalError.stackTypeError(t, env))
+      })
     }
 
     private def fun(name: String, stackType: StackType, definition: StackType => Env => EvalResult): (String, VFun) = {
       (name, VFun(Some(name), stackType, definition(stackType)))
     }
 
+    val Intrinsic_if = ":intrinsic_if"
+
     private val predefinedSymbols: Map[String, KValue] = Map(
       binOp("+", _ + _),
-      binOp("*", _ * _),
       binOp("-", _ - _),
+      binOp("*", _ * _),
       binOp("/", _ / _),
-      fun("pop", StackType.generic(f => StackType(consumes = List(f()))), t => env => {
+      binOp("%", _ % _),
+      unaryOp("unary-", a => -a),
+      unaryOp("unary+", a => a),
+      unaryOp("unary~", a => a ^ a),
+      fun("pop", StackType.generic1(tv => StackType(consumes = List(tv))), t => env => {
         env.stack match
           case _ :: tl => Right(env.copy(stack = tl))
+          case _ => Left(KittenEvalError.stackTypeError(t, env))
+      }),
+      // duplicate top of the stack
+      fun("dup", StackType.generic1(tv => StackType(consumes = List(tv), produces = List(tv, tv))), t => env => {
+        env.stack match
+          case hd :: tl =>
+            Right(env.copy(stack = hd :: hd :: tl))
+          case _ => Left(KittenEvalError.stackTypeError(t, env))
+      }),
+      // consume top of the stack and print it
+      fun("show", StackType.generic1(tv => StackType(consumes = List(tv))), t => env => {
+        env.stack match
+          case hd :: tl =>
+            println(s"show : $hd")
+            Right(env.copy(stack = tl))
+          case _ => Left(KittenEvalError.stackTypeError(t, env))
+      }),
+      // print and pass: print the top of the stack but leave it there
+      // this function is equivalent to `dup show`
+      fun("pp", StackType.generic1(StackType.symmetric1), t => env => {
+        env.stack match
+          case hd :: _ =>
+            println(s"show : $hd")
+            Right(env)
+          case _ => Left(KittenEvalError.stackTypeError(t, env))
+      }),
+      fun(Intrinsic_if, StackType.generic1(StackType.symmetric1), t => env => {
+        env.stack match
+          case hd :: _ =>
+            println(s"show : $hd")
+            Right(env)
           case _ => Left(KittenEvalError.stackTypeError(t, env))
       }),
     )
@@ -108,15 +181,20 @@ package eval {
           definition(env)
 
 
-  def eval(env: Env)(knode: KExpr): EvalResult = {
+  def eval(knode: KExpr)(env: Env): EvalResult = {
     knode match
-      case Number(value) => Right(env.push(VNum(value)))
+      case PushPrim(ty, value) => Right(env.push(VPrimitive(ty, value)))
       case FunApply(name) => env(name).flatMap(applyValue(env))
-      case Chain(a, b) => eval(env)(a).flatMap(e2 => eval(e2)(b))
-      case n@NameTop(name) =>
-        env.stack match
-          case top :: _ => Right(env.copy(vars = env.vars.+((name, top))))
-          case _ => Left(KittenEvalError.stackTypeError(types.computeType(n).right.get, env))
+      case Chain(a, b) => eval(a)(env).flatMap(e2 => eval(b)(e2))
+      case q@Quote(e) => Right(env.push(VFun(Some(q.toString), types.computeType(env.toSymbolic)(e).map(_._1).right.get, eval(e))))
+      case node@NameTopN(names) =>
+        val (topOfStack, stackTail) = env.stack.splitAt(names.length)
+        if topOfStack.lengthCompare(names.length) != 0 then
+          Left(KittenEvalError.stackTypeError(node.stackType, env))
+        else
+          Right(env.copy(
+            vars = env.vars ++ names.zip(topOfStack.reverseIterator),
+            stack = stackTail))
 
   }
 }

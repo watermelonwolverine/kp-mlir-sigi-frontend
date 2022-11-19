@@ -20,6 +20,13 @@ package tokens {
   case class OP(opName: String) extends KToken
 
   case object ARROW extends KToken
+  case object IF extends KToken
+  case object ELSE extends KToken
+  case object ELIF extends KToken
+  case object TRUE extends KToken
+  case object FALSE extends KToken
+  case object SEMI extends KToken
+  case object COMMA extends KToken
   case object COLON extends KToken
   case object LPAREN extends KToken
   case object RPAREN extends KToken
@@ -27,7 +34,9 @@ package tokens {
   case object RBRACE extends KToken
   case object LBRACKET extends KToken
   case object RBRACKET extends KToken
-  case class ERROR(msg:String) extends KToken
+  case object LANGLE extends KToken
+  case object RANGLE extends KToken
+  case class ERROR(msg: String) extends KToken
 
 
   object KittenLexer extends RegexParsers with Scanners {
@@ -35,27 +44,38 @@ package tokens {
 
     override type Token = KToken
 
-    def ident = """[a-zA-Z]\w*""".r ^^ { a => ID(a) }
-    def op = "[+*/-]|==|<>".r ^^ { a => OP(a) }
+    def ident = """[a-zA-Z]\w*""".r ^^ ID
+    def op = "[-+*/%]|==|<>".r ^^ OP
     def number = """(0|[1-9]\d*)""".r ^^ { a => NUMBER(a.toInt) }
 
-    def arrow = "->" ^^ { _ => ARROW }
-    def colon = ":" ^^ { _ => COLON }
-    def lparen = "(" ^^ { _ => LPAREN }
-    def rparen = ")" ^^ { _ => RPAREN }
-    def lbrace = "{" ^^ { _ => LBRACE }
-    def rbrace = "}" ^^ { _ => RBRACE }
-    def lbracket = "[" ^^ { _ => LBRACKET }
-    def rbracket = "]" ^^ { _ => RBRACKET }
+    def arrow = "->" ^^^ ARROW
+    def colon = ":" ^^^ COLON
+    def lparen = "(" ^^^ LPAREN
+    def rparen = ")" ^^^ RPAREN
+    def lbrace = "{" ^^^ LBRACE
+    def rbrace = "}" ^^^ RBRACE
+    def lbracket = "[" ^^^ LBRACKET
+    def rbracket = "]" ^^^ RBRACKET
+    def semi = ";" ^^^ SEMI
+    def comma = "," ^^^ COMMA
+    def langle = "<" ^^^ LANGLE
+    def rangle = ">" ^^^ RANGLE
+
+    private def keyword =
+      "if" ^^^ IF
+        | "else" ^^^ ELSE
+        | "elif" ^^^ ELIF
+        | "true" ^^^ TRUE
+        | "false" ^^^ FALSE
 
     override def token: KittenLexer.Parser[KittenLexer.Token] =
-      ident | number | arrow | colon | lparen | rparen
+      keyword | ident | number | arrow | colon | lparen | rparen
         | lbrace | rbrace | lbracket | rbracket
-        | op
+        | op | semi | comma | langle | rangle
 
     override def whitespace: KittenLexer.Parser[Any] = "\\s*".r
 
-    override def errorToken(msg: String): KToken =  ERROR(msg)
+    override def errorToken(msg: String): KToken = ERROR(msg)
   }
 
   class KTokenScanner(in: String) extends KittenLexer.Scanner(CharSequenceReader(in))
