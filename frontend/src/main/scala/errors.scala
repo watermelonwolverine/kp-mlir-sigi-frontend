@@ -18,6 +18,7 @@ case class KittenTypeError(msg: String) extends KittenCompilationError {
 }
 
 object KittenTypeError {
+  def undef(name: String): KittenTypeError = KittenTypeError(s"Undefined name '$name'")
   def mismatch(t1: StackType, t2: StackType): KittenTypeError = KittenTypeError(
     s"Mismatched types: $t1 is not compatible with $t2"
   )
@@ -34,7 +35,7 @@ object KittenTypeError {
 
 case class KittenEvalError(msg: String) extends KittenError
 object KittenEvalError {
-  def undef(name: String): KittenEvalError = KittenEvalError(s"Undefined name $name")
+  def undef(name: String): KittenEvalError = KittenEvalError(s"Undefined name '$name'")
   def stackTypeError(t: StackType, env:Env): KittenEvalError =
-    KittenEvalError(s"Cannot evaluate function of type $t with stack ${env.stackToString}")
+    KittenEvalError(s"Cannot evaluate function of type ($t) with stack ${env.stackToString}")
 }

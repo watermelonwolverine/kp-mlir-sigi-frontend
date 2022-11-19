@@ -79,9 +79,21 @@ package eval {
             Left(KittenEvalError.stackTypeError(types.BinOpType, env))
       }))
     }
+
+    private def fun(name: String, stackType: StackType, definition: StackType => Env => EvalResult): (String, VFun) = {
+      (name, VFun(Some(name), stackType, definition(stackType)))
+    }
+
     private val predefinedSymbols: Map[String, KValue] = Map(
       binOp("+", _ + _),
-      binOp("*", _ * _)
+      binOp("*", _ * _),
+      binOp("-", _ - _),
+      binOp("/", _ / _),
+      fun("pop", StackType.generic(f => StackType(consumes = List(f()))), t => env => {
+        env.stack match
+          case _ :: tl => Right(env.copy(stack = tl))
+          case _ => Left(KittenEvalError.stackTypeError(t, env))
+      }),
     )
     val default: Env = Env(predefinedSymbols, Nil)
   }
@@ -89,7 +101,7 @@ package eval {
   def applyValue(env: Env)(value: KValue): EvalResult =
     value match
       case num@VNum(_) => Right(env.push(num))
-      case VFun(name, t, definition) =>
+      case VFun(_, t, definition) =>
         if (env.stack.lengthCompare(t.consumes.length) < 0)
           Left(KittenEvalError.stackTypeError(t, env))
         else
@@ -101,5 +113,10 @@ package eval {
       case Number(value) => Right(env.push(VNum(value)))
       case FunApply(name) => env(name).flatMap(applyValue(env))
       case Chain(a, b) => eval(env)(a).flatMap(e2 => eval(e2)(b))
+      case n@NameTop(name) =>
+        env.stack match
+          case top :: _ => Right(env.copy(vars = env.vars.+((name, top))))
+          case _ => Left(KittenEvalError.stackTypeError(types.computeType(n).right.get, env))
+
   }
 }
