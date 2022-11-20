@@ -86,18 +86,16 @@ package ast {
 
     private def multexpr: Parser[KExpr] =
       unary ~ rep((OP("*") | OP("/") | OP("%")) ~ unary) ^^ {
-        case (e1: KExpr) ~ (list: List[(OP, KExpr)]) =>
-          list.foldLeft(e1)((a: KExpr, b: (OP, KExpr)) => (a, b) match {
-            case (a, (OP(op), b: KExpr)) => Chain(Chain(a, b), FunApply(op))
-          })
+        case e1 ~ list => list.foldLeft(e1) {
+          case (a, OP(op) ~ b) => Chain(Chain(a, b), FunApply(op))
+        }
       }
 
     private def addexpr: Parser[KExpr] =
       multexpr ~ rep((OP("+") | OP("-")) ~ multexpr) ^^ {
-        case (e1: KExpr) ~ (list: List[OP ~ KExpr]) =>
-          list.foldLeft(e1)((a, b) => (a, b) match {
-            case (a, OP(op) ~ b) => Chain(Chain(a, b), FunApply(op))
-          })
+        case e1 ~ list => list.foldLeft(e1) {
+          case (a, OP(op) ~ b) => Chain(Chain(a, b), FunApply(op))
+        }
       }
 
 

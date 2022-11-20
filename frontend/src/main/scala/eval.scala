@@ -23,10 +23,10 @@ package eval {
 
       val result: Either[KittenError, Env] = for {
         parsed <- parser.parse(line)
-        typed <- types.assignType(env.toSymbolic)(parsed.ast)
-        env2 <- eval(typed._1)(env)
+        typed <- types.assignType(env.bindingTypes)(parsed.ast)
+        env2 <- eval(typed)(env)
       } yield {
-        println(s"  ${parsed.ast}    : ${canonicalize(typed._1.stackTy)}")
+        println(s"  ${parsed.ast}    : ${canonicalize(typed.stackTy)}")
         println(s"  ${env2.stackToString}")
         env2
       }
@@ -76,7 +76,6 @@ package eval {
   case class VList(ty: types.KList, items: List[KValue]) extends KValue
 
 
-  type StackEntry = KValue
 
 
   case class Env(vars: Map[String, KValue], stack: List[KValue]) {
@@ -86,11 +85,7 @@ package eval {
 
     def stackToString: String = stack.mkString("[", " :: ", "]")
     def varsToString: String = (vars -- Env.default.vars.keys).map { case (k, v) => s"${k}: $v" }.mkString("{", ", ", "}")
-    def toSymbolic: TypingScope = {
-      TypingScope(
-        bindings = vars.map((k, v) => (k, v.stackType)),
-      )
-    }
+    def bindingTypes: types.BindingTypes = vars.map((k, v) => (k, v.dataType))
   }
 
   object Env {
@@ -221,7 +216,7 @@ package eval {
     case TFunApply(_, name) => env(name).flatMap(applyValue(env))
     case TChain(_, a, b) => eval(a)(env).flatMap(e2 => eval(b)(e2))
     case TPushQuote(e) => Right(env.push(VFun(Some("(quote)"), e.stackTy, eval(e))))
-    case node@TNameTopN(names) =>
+    case node@TNameTopN(_, names) =>
       val (topOfStack, stackTail) = env.stack.splitAt(names.length)
       if topOfStack.lengthCompare(names.length) != 0 then
         Left(KittenEvalError.stackTypeError(node.stackTy, env))
