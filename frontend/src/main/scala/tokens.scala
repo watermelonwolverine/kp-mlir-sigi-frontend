@@ -29,6 +29,7 @@ package tokens {
   case object SEMI extends KToken
   case object COMMA extends KToken
   case object COLON extends KToken
+  case object BACKSLASH extends KToken
   case object LPAREN extends KToken
   case object RPAREN extends KToken
   case object LBRACE extends KToken
@@ -60,18 +61,20 @@ package tokens {
           STRING(unescaped)
       }
 
-    def arrow = "->" ^^^ ARROW
-    def colon = ":" ^^^ COLON
-    def lparen = "(" ^^^ LPAREN
-    def rparen = ")" ^^^ RPAREN
-    def lbrace = "{" ^^^ LBRACE
-    def rbrace = "}" ^^^ RBRACE
-    def lbracket = "[" ^^^ LBRACKET
-    def rbracket = "]" ^^^ RBRACKET
-    def semi = ";" ^^^ SEMI
-    def comma = "," ^^^ COMMA
-    def langle = "<" ^^^ LANGLE
-    def rangle = ">" ^^^ RANGLE
+    private def punct =
+    "->" ^^^ ARROW
+    | ":" ^^^ COLON
+    | "(" ^^^ LPAREN
+    | ")" ^^^ RPAREN
+    | "{" ^^^ LBRACE
+    | "}" ^^^ RBRACE
+    | "[" ^^^ LBRACKET
+    | "]" ^^^ RBRACKET
+    | ";" ^^^ SEMI
+    | "," ^^^ COMMA
+    | "<" ^^^ LANGLE
+    | ">" ^^^ RANGLE
+    | "\\" ^^^ BACKSLASH
 
     private def keyword =
       "if" ^^^ IF
@@ -81,9 +84,7 @@ package tokens {
         | "false" ^^^ FALSE
 
     override def token: KittenLexer.Parser[KittenLexer.Token] =
-      keyword | ident | number | arrow | colon | lparen | rparen
-        | lbrace | rbrace | lbracket | rbracket
-        | op | semi | comma | langle | rangle | string
+      keyword | ident | number | punct | op | string 
 
     override def whitespace: KittenLexer.Parser[Any] = "\\s*".r
 

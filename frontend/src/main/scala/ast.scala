@@ -52,17 +52,11 @@ package ast {
 
     private def parexpr = LPAREN ~> exprSeq <~ RPAREN
 
-    private def primary: Parser[KExpr] =
-      accept("boolean", { case TRUE => PushPrim.PushTrue })
-        | accept("boolean", { case FALSE => PushPrim.PushFalse })
-        | accept("identifier", { case ID(name) => FunApply(name) })
-        | accept("number", { case NUMBER(v) => PushPrim(types.KInt, v) })
-        | accept("string", { case STRING(v) => PushPrim(types.KString, v) })
-        | (LBRACKET ~> repsep(exprSeq, COMMA) <~ RBRACKET ^^ PushList)
-        | (LPAREN ~> (exprSeq | accept("operator", { case OP(n) => FunApply(n) })) <~ RPAREN)
-        | thunk
-        | (ARROW ~> rep1sep(accept("identifier", { case ID(name) => name }), COMMA) <~ SEMI ^^ NameTopN)
-        | ((IF ~> parexpr.? ~ thunk
+    private def opAsFunApply = accept("operator", { case OP(n) => FunApply(n) })
+    private def identAsFunApply = accept("identifier", { case ID(n) => FunApply(n) })
+
+    private def ifelse: Parser[KExpr] =
+      (IF ~> parexpr.? ~ thunk
         ~ rep(ELIF ~> parexpr ~ thunk)
         ~ (ELSE ~> thunk)
         ) ^^ {
@@ -76,12 +70,25 @@ package ast {
           val ifelse = makeIf(thenThunk, foldedElseIf)
 
           cond.map(c => Chain(c, ifelse)).getOrElse(ifelse)
-      })
+      }
+
+    private def primary: Parser[KExpr] =
+      TRUE ^^^ PushPrim.PushTrue
+        | FALSE ^^^ PushPrim.PushFalse
+        | identAsFunApply
+        | accept("number", { case NUMBER(v) => PushPrim(types.KInt, v) })
+        | accept("string", { case STRING(v) => PushPrim(types.KString, v) })
+        | BACKSLASH ~> (opAsFunApply | identAsFunApply) ^^ Quote
+        | (LBRACKET ~> repsep(exprSeq, COMMA) <~ RBRACKET ^^ PushList)
+        | (LPAREN ~> (exprSeq | opAsFunApply) <~ RPAREN)
+        | thunk
+        | (ARROW ~> rep1sep(accept("identifier", { case ID(name) => name }), COMMA) <~ SEMI ^^ NameTopN)
+        | ifelse
 
     private def unary: Parser[KExpr] =
       (OP("-") | OP("+") | OP("~")).? ~ primary ^^ {
         case Some(OP(op)) ~ e => Chain(e, FunApply("unary_" + op))
-        case None ~ (e1: KExpr) => e1
+        case None ~ e => e
       }
 
     private def multexpr: Parser[KExpr] =
