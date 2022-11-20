@@ -18,6 +18,7 @@ package tokens {
   case class NUMBER(value: Int) extends KToken
   case class ID(name: String) extends KToken
   case class OP(opName: String) extends KToken
+  case class STRING(value: String) extends KToken
 
   case object ARROW extends KToken
   case object IF extends KToken
@@ -44,9 +45,20 @@ package tokens {
 
     override type Token = KToken
 
-    def ident = """[a-zA-Z]\w*""".r ^^ ID
-    def op = "[-+*/%]|==|<>".r ^^ OP
-    def number = """(0|[1-9]\d*)""".r ^^ { a => NUMBER(a.toInt) }
+    def ident: Parser[ID] = """[a-zA-Z]\w*""".r ^^ ID
+    def op: Parser[OP] = "[-+*/%]|==|<>".r ^^ OP
+    def number: Parser[NUMBER] = """(0|[1-9]\d*)""".r ^^ { a => NUMBER(a.toInt) }
+    def string: Parser[STRING] =
+      """"([^\\"]*+|\\[\\rn"])*""""".r ^^ {
+        str =>
+          val woDelim = str.substring(1, str.length - 1)
+          val unescaped = "\\[rn]".r.replaceAllIn(woDelim,
+            m => m.matched.charAt(1) match
+              case 'r' => "\n"
+              case 'n' => "\n"
+              case '"' => "\"")
+          STRING(unescaped)
+      }
 
     def arrow = "->" ^^^ ARROW
     def colon = ":" ^^^ COLON
@@ -71,7 +83,7 @@ package tokens {
     override def token: KittenLexer.Parser[KittenLexer.Token] =
       keyword | ident | number | arrow | colon | lparen | rparen
         | lbrace | rbrace | lbracket | rbracket
-        | op | semi | comma | langle | rangle
+        | op | semi | comma | langle | rangle | string
 
     override def whitespace: KittenLexer.Parser[Any] = "\\s*".r
 

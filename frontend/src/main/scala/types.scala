@@ -7,6 +7,8 @@ package types {
   import ast.*
   import eval.Env
 
+  import de.cfaed.kitten.types.StackType.canonicalize
+
   import java.util.Objects
   import scala.annotation.tailrec
   import scala.collection.mutable
@@ -18,6 +20,7 @@ package types {
       case KString => "str"
       case KBool => "bool"
       case KFun(stackType) => "(" + stackType.toString + ")"
+      case KList(item) => s"List[$item]"
       case tv: KTypeVar => tv.name
       case iv: KInferenceVar => iv.origin.name + System.identityHashCode(this)
 
@@ -47,6 +50,7 @@ package types {
 
   /** An unapplied function type. */
   case class KFun(stack: StackType) extends KDataType
+  case class KList(item: KDataType) extends KDataType
 
   /** Types of a term, a stack function. */
   case class StackType(consumes: List[KDataType] = Nil,
@@ -135,11 +139,20 @@ package types {
       (groundSt(st), newScope)
     }
 
+    def unify(a: StackType, b: StackType): Boolean =
+      @tailrec
+      def unifyList(as: List[KDataType], bs: List[KDataType]): Boolean =
+        (as, bs) match
+          case (Nil, Nil) => true
+          case (hd1 :: tl1, hd2 :: tl2) => unify(hd1, hd2) && unifyList(tl1, tl2)
+          case _ => false
+
+      unifyList(a.produces, b.produces) && unifyList(a.consumes, b.consumes)
 
     def unify(a: KDataType, b: KDataType): Boolean =
       if a == b then true
       else
-        def doUnify(a: KInferenceVar, b: KDataType): Boolean =
+        def unifyIvar(a: KInferenceVar, b: KDataType): Boolean =
           if a.instantiation != null then
             return unify(a.instantiation, b)
 
@@ -147,15 +160,45 @@ package types {
           true
 
         (a, b) match
-          case (x: KInferenceVar, y) => doUnify(x, y)
-          case (y, x: KInferenceVar) => doUnify(x, y)
-          case _ => false //todo structured types
+          case (x: KInferenceVar, y) => unifyIvar(x, y)
+          case (y, x: KInferenceVar) => unifyIvar(x, y)
+          case (KFun(st1), KFun(st2)) => unify(st1, st2)
+          case _ => false
   }
 
   case class TypingScope(bindings: Map[String, StackType])
 
   def computeType(env: TypingScope)(node: KExpr): Either[KittenTypeError, (StackType, TypingScope)] = node match
     case PushPrim(ty, _) => Right((StackType.pushOne(ty), env))
+    case PushList(items) =>
+      val itemTypes: Either[KittenTypeError, List[StackType]] = items.map(computeType(env)).partition(_.isLeft) match
+        case (Nil, types) => Right(for (Right((t, _)) <- types) yield t)
+        case (hd :: _, _) => Left(hd.left.get)
+
+
+      val res: Either[KittenTypeError, StackType] = itemTypes match
+        case Right(Nil) => Right(StackType.generic1(tv => StackType.pushOne(KList(tv)))) // -> List['a]
+        case Right(hd :: tl) =>
+          // now there may be type inference involved to unify types
+          val ctx = TypingCtx()
+          val toIvars = ctx.prepareInference(mutable.Map())
+          val itemType = tl.foldLeft[Either[KittenTypeError, StackType]](Right(hd)) {
+            (either, newT) =>
+              either.flatMap(leftT => {
+                val rightT = toIvars(newT)
+                if ctx.unify(leftT, rightT) then Right(ctx.ground(leftT, env)._1)
+                else Left(KittenTypeError.mismatch(hd, newT))
+              })
+          }
+
+          itemType.map(canonicalize).flatMap({
+            case StackType(Nil, List(single)) => Right(StackType.pushOne(KList(single)))
+            case st => Left(KittenTypeError.cannotBeListItem(st))
+          })
+        case Left(v) => Left(v)
+
+      res.map((_, env))
+
     case Quote(term) => computeType(env)(term).map(t => (StackType.pushOne(KFun(t._1)), env))
     case node@NameTopN(names) =>
       val st = node.stackType

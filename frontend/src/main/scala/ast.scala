@@ -11,8 +11,7 @@ import scala.util.parsing.input.{NoPosition, Position, Reader}
 package ast {
 
   import tokens.*
-
-  import de.cfaed.kitten.types.{KDataType, KPrimitive, StackType}
+  import types.{KDataType, KPrimitive, StackType}
 
   /**
     * @author Clément Fournier &lt;clement.fournier@tu-dresden.de&gt;
@@ -25,11 +24,13 @@ package ast {
       case FunApply(name) => if Character.isAlphabetic(name(0)) then name else s"($name)"
       case PushPrim(_, value) => value.toString
       case NameTopN(names) => names.mkString("-> ", ", ", ";")
+      case PushList(items) => items.mkString("[", ", ", "]")
       case Quote(term) => s"{ $term }"
   }
 
   case class Chain(a: KExpr, b: KExpr) extends KExpr
   case class PushPrim[T](ty: KPrimitive[T], value: T) extends KExpr
+  case class PushList(items: List[KExpr]) extends KExpr
   object PushPrim {
     val PushTrue = PushPrim(types.KBool, true)
     val PushFalse = PushPrim(types.KBool, false)
@@ -56,6 +57,8 @@ package ast {
         | accept("boolean", { case FALSE => PushPrim.PushFalse })
         | accept("identifier", { case ID(name) => FunApply(name) })
         | accept("number", { case NUMBER(v) => PushPrim(types.KInt, v) })
+        | accept("string", { case STRING(v) => PushPrim(types.KString, v) })
+        | (LBRACKET ~> repsep(exprSeq, COMMA) <~ RBRACKET ^^ PushList)
         | (LPAREN ~> (exprSeq | accept("operator", { case OP(n) => FunApply(n) })) <~ RPAREN)
         | thunk
         | (ARROW ~> rep1sep(accept("identifier", { case ID(name) => name }), COMMA) <~ SEMI ^^ NameTopN)
@@ -64,10 +67,15 @@ package ast {
         ~ (ELSE ~> thunk)
         ) ^^ {
         case (cond: Option[KExpr]) ~ (thenThunk: Quote) ~ (elifs: List[KExpr ~ Quote]) ~ (elseThunk: Quote) =>
-          def makeIf(cond: KExpr, thenThunk: Quote, elseThunk: Quote): KExpr =
-            Chain(Chain(Chain(thenThunk, elseThunk), cond), FunApply(eval.Env.Intrinsic_if))
+          def makeIf(thenThunk: Quote, elseThunk: Quote): KExpr =
+            Chain(Chain(thenThunk, elseThunk), FunApply(eval.Env.Intrinsic_if))
 
-          thenThunk // todo
+          val foldedElseIf = elifs.foldRight[Quote](elseThunk) {
+            case (c ~ t, f) => Quote(Chain(c, makeIf(t, f)))
+          }
+          val ifelse = makeIf(thenThunk, foldedElseIf)
+
+          cond.map(c => Chain(c, ifelse)).getOrElse(ifelse)
       })
 
     private def unary: Parser[KExpr] =
