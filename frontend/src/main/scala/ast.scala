@@ -11,7 +11,7 @@ import scala.util.parsing.input.{NoPosition, Position, Reader}
 package ast {
 
   import tokens.*
-  import types.{KDataType, KPrimitive, StackType}
+  import types.{KDataType, KFun, KPrimitive, StackType}
 
   /**
     * @author Clément Fournier &lt;clement.fournier@tu-dresden.de&gt;
@@ -32,8 +32,8 @@ package ast {
   case class PushPrim[T](ty: KPrimitive[T], value: T) extends KExpr
   case class PushList(items: List[KExpr]) extends KExpr
   object PushPrim {
-    val PushTrue = PushPrim(types.KBool, true)
-    val PushFalse = PushPrim(types.KBool, false)
+    val PushTrue: PushPrim[Boolean] = PushPrim(types.KBool, true)
+    val PushFalse: PushPrim[Boolean] = PushPrim(types.KBool, false)
   }
   case class FunApply(name: String) extends KExpr
   case class Quote(term: KExpr) extends KExpr

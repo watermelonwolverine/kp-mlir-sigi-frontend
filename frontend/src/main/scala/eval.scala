@@ -7,7 +7,7 @@ package eval {
 
   import de.cfaed.kitten.ast as parser
   import ast.*
-  import types.{BinOpType, KDataType, KFun, KInt, KPrimitive, StackType, TypingScope}
+  import types.*
   import types.StackType.canonicalize
 
   import scala.annotation.tailrec
@@ -23,11 +23,10 @@ package eval {
 
       val result: Either[KittenError, Env] = for {
         parsed <- parser.parse(line)
-        t <- types.computeType(env.toSymbolic)(parsed.ast)
-        //println(t)
-        env2 <- eval(parsed.ast)(env)
+        typed <- types.assignType(env.toSymbolic)(parsed.ast)
+        env2 <- eval(typed._1)(env)
       } yield {
-        println(s"  ${parsed.ast}    : ${canonicalize(t._1)}")
+        println(s"  ${parsed.ast}    : ${canonicalize(typed._1.stackTy)}")
         println(s"  ${env2.stackToString}")
         env2
       }
@@ -74,11 +73,13 @@ package eval {
   }
 
   case class VFun(name: Option[String], t: StackType, definition: Env => EvalResult) extends KValue
-  case class VList(t: types.KList, items: List[KValue]) extends KValue
+  case class VList(ty: types.KList, items: List[KValue]) extends KValue
 
 
-  case class Env(vars: Map[String, KValue],
-                 stack: List[KValue]) {
+  type StackEntry = KValue
+
+
+  case class Env(vars: Map[String, KValue], stack: List[KValue]) {
     def apply(name: String): Either[KittenEvalError, KValue] = vars.get(name).toRight(KittenEvalError.undef(name))
 
     def push(v: KValue): Env = Env(vars, v :: stack)
@@ -203,33 +204,29 @@ package eval {
           definition(env)
 
 
-  def eval(knode: KExpr)(env: Env): EvalResult = {
-    knode match
-      case PushPrim(ty, value) => Right(env.push(VPrimitive(ty, value)))
-      case PushList(items) =>
-        val stackLen = env.stack.length
-        items.foldLeft[EvalResult](Right(env)) { (env, item) =>
-          env.flatMap(e => eval(item)(e))
-        }.flatMap(env => {
-          val newItems = env.stack.length - stackLen 
-          if newItems != items.length then
-            Left(KittenEvalError(s"Problem building list, expected ${items.length} new items on stack, got $newItems. This should have been caught by the type checker."))
-          else
-            val (listItems, stackRest) = env.stack.splitAt(newItems)
-            Right(env.copy(stack =VList(ty, listItems) stackRest))
-            
-        })
-      case FunApply(name) => env(name).flatMap(applyValue(env))
-      case Chain(a, b) => eval(a)(env).flatMap(e2 => eval(b)(e2))
-      case q@Quote(e) => Right(env.push(VFun(Some(q.toString), types.computeType(env.toSymbolic)(e).map(_._1).right.get, eval(e))))
-      case node@NameTopN(names) =>
-        val (topOfStack, stackTail) = env.stack.splitAt(names.length)
-        if topOfStack.lengthCompare(names.length) != 0 then
-          Left(KittenEvalError.stackTypeError(node.stackType, env))
+  def eval(knode: types.TypedExpr)(env: Env): EvalResult = knode match
+    case TPushPrim(ty, value) => Right(env.push(VPrimitive(ty, value)))
+    case TPushList(ty, items) =>
+      val stackLen = env.stack.length
+      items.foldLeft[EvalResult](Right(env)) { (env, item) =>
+        env.flatMap(e => eval(item)(e))
+      }.flatMap(env => {
+        val newItems = env.stack.length - stackLen
+        if newItems != items.length then
+          Left(KittenEvalError(s"Problem building list, expected ${items.length} new items on stack, got $newItems. This should have been caught by the type checker."))
         else
-          Right(env.copy(
-            vars = env.vars ++ names.zip(topOfStack.reverseIterator),
-            stack = stackTail))
-
-  }
+          val (listItems, stackRest) = env.stack.splitAt(newItems)
+          Right(env.copy(stack = VList(ty, listItems.reverse) :: stackRest))
+      })
+    case TFunApply(_, name) => env(name).flatMap(applyValue(env))
+    case TChain(_, a, b) => eval(a)(env).flatMap(e2 => eval(b)(e2))
+    case TPushQuote(e) => Right(env.push(VFun(Some("(quote)"), e.stackTy, eval(e))))
+    case node@TNameTopN(names) =>
+      val (topOfStack, stackTail) = env.stack.splitAt(names.length)
+      if topOfStack.lengthCompare(names.length) != 0 then
+        Left(KittenEvalError.stackTypeError(node.stackTy, env))
+      else
+        Right(env.copy(
+          vars = env.vars ++ names.zip(topOfStack.reverseIterator),
+          stack = stackTail))
 }
