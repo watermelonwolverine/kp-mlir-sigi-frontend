@@ -52,7 +52,7 @@ package tokens {
     def op: Parser[OP] = "[-+*/%]|==|<>".r ^^ OP
     def number: Parser[NUMBER] = """(0|[1-9]\d*)""".r ^^ { a => NUMBER(a.toInt) }
     def string: Parser[STRING] =
-      """"([^\\"]*+|\\[\\rn"])*""""".r ^^ {
+      """"([^\\"]*+|\\[\\rn"])*"""".r ^^ {
         str =>
           val woDelim = str.substring(1, str.length - 1)
           val unescaped = "\\[rn]".r.replaceAllIn(woDelim,

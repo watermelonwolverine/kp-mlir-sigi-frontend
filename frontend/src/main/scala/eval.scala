@@ -17,10 +17,15 @@ package eval {
   def repl(): Unit = {
     val scanner = Scanner(System.in)
 
-    def showSomethingNice(t: TypedStmt): Unit = t match
-      case TExprStmt(e) => println(s"Evaluated expr of type ${e.stackTy}")
+    def showSomethingNice(before: Env, after: Env)(t: TypedStmt): Unit = t match
+      case TExprStmt(e) =>
+        println(s"Evaluated expr of type ${e.stackTy}")
+        val consumed = before.stack.take(e.stackTy.consumes.length).mkString(", ")
+        val produced = after.stack.take(e.stackTy.produces.length).mkString(", ")
+        println(s"$consumed -> $produced")
+
       case TFunDef(name, ty, _) => println(s"Defined function $name: $ty")
-      case TBlock(st) => st.foreach(showSomethingNice)
+      case TBlock(st) => st.foreach(showSomethingNice(before, after)) // this does not work!
       case _ =>
 
     @tailrec
@@ -32,7 +37,7 @@ package eval {
         typed <- doValidation(env)(parsed)
         env2 <- eval(typed)(env)
       } yield {
-        showSomethingNice(typed)
+        showSomethingNice(env,env2)(typed)
         env2
       }
 
@@ -98,6 +103,7 @@ package eval {
 
   sealed trait KValue {
     override def toString: String = this match
+      case VPrimitive(types.KString, value) => s"\"$value\""
       case VPrimitive(_, value) => value.toString
       case VFun(name, t, _) => s"(${name.getOrElse("unnamed")} : $t)"
       case VList(_, items) => items.mkString("[", ", ", "]")
