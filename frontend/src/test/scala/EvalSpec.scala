@@ -1,8 +1,7 @@
 package de.cfaed.kitten
 
-import eval.{Env, KValue, VNum}
-import types.{StackType, TypingScope}
-
+import eval.{Env, KValue, VList, VNum}
+import types.*
 import org.scalatest.funsuite.AnyFunSuite
 
 /**
@@ -28,9 +27,10 @@ class EvalSpec extends AnyFunSuite {
   checkResult("{->a,b; b} -> snd; 1 (2 snd)", List(VNum(2)))
 
   checkResult("\"a\" 2 {->a,b; b} -> snd; snd", List(VNum(2)))
-  checkResult("2 show", List())
-  checkResult("2 pp", List(VNum(2)))
+  checkResult("2 pop", List())
+  checkResult("2 dup pop", List(VNum(2)))
 
 
   checkResult("if (true) { 1 } else { 2 }", List(VNum(1)))
+  checkResult("[1, 2]", List(VList(types.KList(types.KInt), List(VNum(1), VNum(2)))))
 }

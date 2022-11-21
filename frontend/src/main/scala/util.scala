@@ -18,6 +18,8 @@ extension[A, B] (eithers: List[Either[A, B]]) def flattenList: Either[A, List[B]
     case (Nil, rights) => Right(for (Right(b) <- rights) yield b)
     case (hd :: _, _) => Left(hd.left.get)
 
+// note: this is  not a general purpose implementation, as it requires a total pattern.
+// we can't conjure a Left from nowhere
 extension[A, B] (self: Either[A, B]) def withFilter(filter: B => Boolean): Either[A, B] = self match
   case right@Right(value) => if filter(value) then right else throw new MatchError(value)
   case left => left

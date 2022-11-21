@@ -20,6 +20,8 @@ package ast {
     */
   sealed trait KNode
 
+  // todo positioning, error messages are shit
+
   sealed trait KStatement extends KNode
   case class KBlock(stmts: List[KStatement]) extends KStatement
   case class KFunDef(name: String, ty: FunType, body: KExpr) extends KStatement
@@ -60,13 +62,16 @@ package ast {
     override type Elem = KToken
 
     private def thunk =
-      LBRACE ~> (exprSeq | accept("operator", { case OP(n) => FunApply(n) })) <~ RBRACE ^^ Quote
+      LBRACE ~> (exprSeq | accept("operator", { case OP(n) => FunApply(n) })) <~ RBRACE ^^ Quote.apply
 
     private def dty: Parser[TypeSpec] =
       id ~ tyArgs.? ^^ { case name ~ tyargs => TypeCtor(name, tyargs.getOrElse(Nil)) }
         | LPAREN ~> funTy <~ RPAREN // funtype
 
     // note that the normal kitten grammar uses angle brackets
+    // todo maybe use OCaml postfix syntax for type ctors
+    //  although maybe using familiar looking generic types makes it look more familiar.
+    // todo maybe remove type param clauses, they can be defined implicitly
     private def tyArgs: Parser[List[TypeSpec]] = LBRACKET ~> rep1sep(dty, COMMA) <~ RBRACKET
     private def tyParms: Parser[List[String]] = LBRACKET ~> rep1sep(id, COMMA) <~ RBRACKET
 
@@ -87,7 +92,7 @@ package ast {
 
     private def opAsFunApply = accept("operator", { case OP(n) => FunApply(n) })
     private def id: Parser[String] = accept("identifier", { case ID(n) => n })
-    private def identAsFunApply = id ^^ FunApply
+    private def identAsFunApply = id ^^ FunApply.apply
 
     private def ifelse: Parser[KExpr] =
       (IF ~> parexpr.? ~ thunk
@@ -112,11 +117,11 @@ package ast {
         | identAsFunApply
         | accept("number", { case NUMBER(v) => PushPrim(types.KInt, v) })
         | accept("string", { case STRING(v) => PushPrim(types.KString, v) })
-        | BACKSLASH ~> (opAsFunApply | identAsFunApply) ^^ Quote
-        | (LBRACKET ~> repsep(exprSeq, COMMA) <~ RBRACKET ^^ PushList)
+        | BACKSLASH ~> (opAsFunApply | identAsFunApply) ^^ Quote.apply
+        | (LBRACKET ~> repsep(exprSeq, COMMA) <~ RBRACKET ^^ PushList.apply)
         | (LPAREN ~> (exprSeq | opAsFunApply) <~ RPAREN)
         | thunk
-        | (ARROW ~> rep1sep(accept("identifier", { case ID(name) => name }), COMMA) <~ SEMI ^^ NameTopN)
+        | (ARROW ~> rep1sep(accept("identifier", { case ID(name) => name }), COMMA) <~ SEMI ^^ NameTopN.apply)
         | ifelse
 
     private def unary: Parser[KExpr] =
@@ -147,8 +152,8 @@ package ast {
       rep1(sequenceableExpr) ^^ (_ reduceLeft Chain.apply)
 
     private def expr: Parser[KExpr] = exprSeq
-    private def statement: Parser[KStatement] = funDef | expr <~ PHAT_SEMI.? ^^ KExprStatement
-    private def statementList: Parser[KBlock] = rep(statement) ^^ KBlock
+    private def statement: Parser[KStatement] = funDef | expr <~ PHAT_SEMI.? ^^ KExprStatement.apply
+    private def statementList: Parser[KBlock] = rep(statement) ^^ KBlock.apply
 
     def apply(source: String): Either[KittenParseError, KExpr] = apply(source, expr)
 

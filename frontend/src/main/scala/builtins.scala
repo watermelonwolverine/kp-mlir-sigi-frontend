@@ -51,22 +51,7 @@ package builtins {
   // intrinsics should have a name which cannot be an identifier in the source lang
   val Intrinsic_if = ":if:"
 
-  val PredefinedSymbols: Map[String, KValue] = Map(
-    binOp("+", _ + _),
-    binOp("-", _ - _),
-    binOp("*", _ * _),
-    binOp("/", _ / _),
-    binOp("%", _ % _),
-    unaryOp("unary-", a => -a),
-    unaryOp("unary+", a => a),
-    unaryOp("unary~", a => a ^ a),
-    stackFun("pop", StackType.generic1(tv => StackType(consumes = List(tv))), {
-      case _ :: tl => Right(tl)
-    }),
-    // duplicate top of the stack
-    stackFun("dup", StackType.generic1(tv => StackType(consumes = List(tv), produces = List(tv, tv))), {
-      case hd :: tl => Right(hd :: hd :: tl)
-    }),
+  val ReplBuiltins: Map[String, KValue] = Map(
     // consume top of the stack and print it
     // this is `pp pop`
     stackFun("show", StackType.generic1(tv => StackType(consumes = List(tv))), {
@@ -91,7 +76,48 @@ package builtins {
         println("typeof: " + hd.dataType)
         Right(stack)
     }),
+  )
+
+  val PredefinedSymbols: Map[String, KValue] = Map(
+    // These operators need to be there because the parser refers to them.
+    // Those bindings cannot be shadowed because they are not valid identifiers.
+    binOp("+", _ + _),
+    binOp("-", _ - _),
+    binOp("*", _ * _),
+    binOp("/", _ / _),
+    binOp("%", _ % _),
+    unaryOp("unary-", a => -a),
+    unaryOp("unary+", a => a),
+    unaryOp("unary~", a => a ^ a),
+
+    // These are core function. Also see list of cat builtins: https://github.com/cdiggins/cat-language
+    // TODO apply   : (('S -> 'R) 'S -> 'R)
+    //      compose : (('B -> 'C) ('A -> 'B) 'S -> ('A -> 'C) 'S)
+    //      while   : (('S -> Bool 'R) ('R -> 'S) 'S -> 'S)
+    //  need row type variables
+    stackFun("pop", StackType.generic1(tv => StackType(consumes = List(tv))), {
+      case _ :: tl => Right(tl)
+    }),
+    // duplicate top of the stack
+    stackFun("dup", StackType.generic1(tv => StackType(consumes = List(tv), produces = List(tv, tv))), {
+      case hd :: tl => Right(hd :: hd :: tl)
+    }),
+    // swap top elements
+    stackFun("swap", StackType.generic2((ta, tb) => StackType(consumes = List(ta, tb), produces = List(tb, ta))), {
+      case a :: b :: tl => Right(b :: a :: tl)
+    }),
+    // quote top of the stack
+    stackFun("quote", StackType.generic1(ta => StackType(consumes = List(ta), produces = List(KFun(StackType.pushOne(ta))))), {
+      case a :: tl => Right(VFun(Some("quote"), StackType.generic1(StackType.pushOne), env => Right(env.push(a))) :: tl)
+    }),
+    // select one of two values
+    stackFun("cond", StackType.generic1(ta => StackType(consumes = List(KBool, ta, ta), produces = List(ta))), {
+      case elseV :: thenV :: VPrimitive(KBool, condition) :: tl =>
+        Right((if condition then thenV else elseV) :: tl)
+    }),
+
     // if:   bool, (-> 'a), (-> 'a) -> 'a
+    // todo this is basically `cond apply` in terms of Cat builtins
     fun(Intrinsic_if, StackType.generic1(tv => {
       val thunkT = KFun(StackType.pushOne(tv))
       StackType(

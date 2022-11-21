@@ -1,7 +1,8 @@
 package de.cfaed.kitten
 
 import eval.Env
-import types.{StackType, TypingScope}
+import types.*
+
 
 import org.scalatest.funsuite.AnyFunSuite
 
@@ -24,8 +25,8 @@ class TypeInfSpec extends AnyFunSuite {
 
 
   checkType("1 2", "-> int, int")
-  checkType("1 2 show", "-> int")
-  checkType("{ show }", "-> ('a ->)")
+  checkType("1 2 pop", "-> int")
+  checkType("{ pop }", "-> ('a ->)")
 
   checkType("-> x, y; x y", "'a, 'b -> 'a, 'b")
   checkType("-> x;", "'a ->")
@@ -47,7 +48,7 @@ class TypeInfSpec extends AnyFunSuite {
   checkType("-> x, y; x * y", "int, int -> int")
   checkType("-> x, y; x x * y", "int, int -> int, int")
 
-  // todo this executes correctly but types to
+  // this used to execute correctly but type to
   //  -> int, ('a, 'b -> 'b), str
   checkType("\"a\" 2 {->a,b; b} -> snd; snd", "-> int")
   // Same as previous. Given application of terms with
@@ -55,9 +56,9 @@ class TypeInfSpec extends AnyFunSuite {
   // This is because the left term will push and 'a, then a 'b,
   // while the right term will pop a 'c.
   // When the arities match, we have (-> 'a, 'b) ('c, 'd ->)
-  // where 'a = 'c and 'b = 'd. That's because consumed arguments 
+  // where 'a = 'c and 'b = 'd. That's because consumed arguments
   // are popped in reverse.
-  checkType("(1 true) show", "-> int")
+  checkType("(1 true) pop", "-> int")
 
 
 }

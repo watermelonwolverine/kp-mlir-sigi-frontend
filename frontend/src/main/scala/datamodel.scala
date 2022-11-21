@@ -9,6 +9,9 @@ package datamodel {
 
   import java.lang.invoke.TypeDescriptor
 
+  // todo this is incompletely implemented and there is no syntax to declare your own type descriptors.
+  //  first step would be to introduce a new type of KValue which takes an arbitrary descriptor
+  //  then support types, then support parsing it.
   sealed trait TypeDescriptor {
     def tparms: List[KTypeVar]
   }

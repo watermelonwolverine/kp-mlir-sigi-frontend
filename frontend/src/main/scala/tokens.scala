@@ -48,8 +48,8 @@ package tokens {
 
     override type Token = KToken
 
-    def ident: Parser[ID] = """[a-zA-Z]\w*""".r ^^ ID
-    def op: Parser[OP] = "[-+*/%]|==|<>".r ^^ OP
+    def ident: Parser[ID] = """[a-zA-Z]\w*""".r ^^ ID.apply
+    def op: Parser[OP] = "[-+*/%]|==|<>".r ^^ OP.apply
     def number: Parser[NUMBER] = """(0|[1-9]\d*)""".r ^^ { a => NUMBER(a.toInt) }
     def string: Parser[STRING] =
       """"([^\\"]*+|\\[\\rn"])*"""".r ^^ {

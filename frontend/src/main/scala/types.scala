@@ -8,8 +8,6 @@ package types {
   import eval.Env
   import types.StackType.canonicalize
 
-  import de.cfaed.kitten.types.KInferenceVar.seqNum
-
   import java.util.Objects
   import scala.annotation.tailrec
   import scala.collection.mutable
@@ -86,7 +84,7 @@ package types {
   }
   class KInferenceVar(val origin: KTypeVar) extends KDataType {
     var instantiation: KDataType = _
-    private[types] val id = seqNum.also { _ => seqNum += 1 }
+    private[types] val id = KInferenceVar.seqNum.also { _ => KInferenceVar.seqNum += 1 }
   }
   object KInferenceVar {
     private var seqNum = 0
@@ -125,8 +123,9 @@ package types {
     }
 
     def generic1[T](f: KTypeVar => T): T = generic(newTypeVar => f(newTypeVar()))
+    def generic2[T](f: (KTypeVar, KTypeVar) => T): T = generic(newTypeVar => f(newTypeVar(), newTypeVar()))
 
-    // Relabel distinct tvars
+    // Relabel distinct tvars from the start of the alphabet.
     def canonicalize(st: StackType): StackType =
       val tvars: mutable.Map[KTypeVar, KTypeVar] = mutable.Map()
       val tvarMaker = KTypeVar.typeVarGenerator()
@@ -136,6 +135,7 @@ package types {
       }.substStackType(st)
   }
 
+  /** Helper class to perform substitution on terms and types. */
   class TySubst[A <: (KTypeVar | KInferenceVar) => KDataType](private val f: A) {
 
     // generalize the parameter fun to apply to all types
@@ -169,11 +169,11 @@ package types {
     private val toIvars = mutable.Map[KTypeVar, KInferenceVar]()
 
     /** Replace type vars with fresh inference vars. */
-    val mapToIvars: StackType => StackType =
+    def mapToIvars(st: StackType): StackType =
       TySubst {
         case t: KTypeVar => toIvars.getOrElseUpdate(t, KInferenceVar(t))
         case t => t
-      }.substStackType _
+      }.substStackType(st)
 
 
     private class Ground {
@@ -195,32 +195,10 @@ package types {
     /** Replace inference variables with their instantiation.
       * Uninstantiated variables are replaced by fresh type vars.
       */
-    //    def ground(st: StackType, env: TypingScope): (StackType, TypingScope) = {
-    //      val g = new Ground()
-    //      val newScope = TypingScope(
-    //        bindings = env.bindings.view.mapValues(g.groundSt).toMap,
-    //      )
-    //      (g.groundSt(st), newScope)
-    //    }
-
-    /** Replace inference variables with their instantiation.
-      * Uninstantiated variables are replaced by fresh type vars.
-      */
     def ground(te: TypedExpr): TypedExpr = new Ground().groundTerm(te)
-    def earlyGround(ivar: KInferenceVar): Either[KittenTypeError, KDataType] = {
-      ivar.instantiation match
-        case null => Left(KittenTypeError(s"Not enough type information to infer type of ${ivar.origin}"))
-        case e: KInferenceVar => earlyGround(e)
-        case t => Right(t)
-    }
 
     def unify(a: StackType, b: StackType): Boolean =
-      @tailrec
-      def unifyList(as: List[KDataType], bs: List[KDataType]): Boolean =
-        (as, bs) match
-          case (Nil, Nil) => true
-          case (hd1 :: tl1, hd2 :: tl2) => unify(hd1, hd2) && unifyList(tl1, tl2)
-          case _ => false
+      val unifyList: (List[KDataType], List[KDataType]) => Boolean = _.zip(_).forall(unify(_, _))
 
       unifyList(a.produces, b.produces) && unifyList(a.consumes, b.consumes)
 
@@ -242,7 +220,7 @@ package types {
           case _ => false
   }
 
-  class TypingScope(private val bindings: BindingTypes, private[types] val ctx: TypingCtx) {
+  private[types] class TypingScope(private val bindings: BindingTypes, private[types] val ctx: TypingCtx) {
     def addBindings(names: BindingTypes): TypingScope =
       new TypingScope(
         bindings = this.bindings ++ names,
@@ -255,7 +233,7 @@ package types {
 
 
   private def inferListType(scope: TypingScope)(itemTrees: List[TypedExpr]): Either[KittenTypeError, KList] = itemTrees match
-    case Nil => Right(StackType.generic1(KList)) // -> List['a]
+    case Nil => Right(StackType.generic1(KList.apply)) // -> List['a]
     case hd :: tl =>
       // now there may be type inference involved to unify types
       val itemType = tl.foldLeft[Either[KittenTypeError, StackType]](Right(scope.ctx.mapToIvars(hd.stackTy))) {
@@ -311,33 +289,23 @@ package types {
       scope.typeOf(name).map(typeFunApply).map((_, scope))
 
     case e@Chain(left, right) =>
-      val toIvars = scope.ctx.mapToIvars
+      val toIvars = scope.ctx.mapToIvars _
       for {
         (leftTree, leftScope) <- assignTypeRec(scope)(left)
         (rightTree, rightScope) <- assignTypeRec(leftScope)(right)
         newEnv <- {
           val (ta, tb) = (toIvars(leftTree.stackTy), toIvars(rightTree.stackTy))
-          // println(s"Chain ($ta) ($tb) in env ${right._2.bindings -- Env.default.toSymbolic.bindings.keys}")
-
-          @tailrec
-          def chainTypeCheck(ctx: TypingCtx)
-                            (moreIn: List[KDataType], moreOut: List[KDataType])
-                            // produced and consumed have same length
-                            (produced: List[KDataType],
-                             consumed: List[KDataType]): Option[KittenTypeError] = {
-            (produced, consumed) match
-              case (a :: atl, b :: btl) =>
-                if (ctx.unify(a, b)) chainTypeCheck(ctx)(moreIn, moreOut)(atl, btl)
-                else Some(KittenTypeError.cannotApply(e, ta, tb, a, b))
-              case (Nil, Nil) => None
-          }
 
           val commonLen = math.min(ta.produces.length, tb.consumes.length)
-          val (prod, toMatch) = ta.produces.splitAtRight(commonLen).pp("ta.produces ")
-          val (cons, toMatch2) = tb.consumes.splitAtRight(commonLen).pp("tb.consumes ")
+          val (prod, toMatch) = ta.produces.splitAtRight(commonLen)
+          val (cons, toMatch2) = tb.consumes.splitAtRight(commonLen)
 
-          // produces more stuff than what is consumed
-          chainTypeCheck(scope.ctx)(cons, prod)(toMatch, toMatch2)
+          val unificationError =
+            toMatch.to(LazyList).zip(toMatch2).collectFirst {
+              case (a, b) if !scope.ctx.unify(a, b) => KittenTypeError.cannotApply(e, ta, tb, a, b)
+            }
+
+          unificationError
             .toLeft(StackType(consumes = cons ++ ta.consumes, produces = prod ++ tb.produces))
             .map(st => (TChain(st, leftTree, rightTree).pp(), rightScope))
         }

@@ -1,7 +1,7 @@
 package de.cfaed.kitten
 
 import eval.Env
-import types.{StackType, TypingScope}
+import types.*
 
 import org.scalatest.funsuite.AnyFunSuite
 

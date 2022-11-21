@@ -2,7 +2,7 @@ package de.cfaed.kitten
 
 import ast.*
 import eval.Env
-import types.{KPrimitive, StackType, TypingScope}
+import types.*
 
 import org.scalatest.funsuite.AnyFunSuite
 import org.scalatest.matchers.should.*
@@ -41,8 +41,7 @@ class ParserSpec extends AnyFunSuite with Matchers {
     given KPrimitive[Boolean] = types.KBool
   }
 
-  import AstBuildingDsl.*
-  import AstBuildingDsl.given
+  import AstBuildingDsl.{*, given}
 
   checkExpr("1 2", p(1) ~ p(2))
   checkExpr("1 2 3", (p(1) ~ p(2)) ~ p(3))

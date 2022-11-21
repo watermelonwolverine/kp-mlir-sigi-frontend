@@ -25,8 +25,7 @@ package eval {
         println(s"$consumed -> $produced")
 
       case TFunDef(name, ty, _) => println(s"Defined function $name: $ty")
-      case TBlock(st) => st.foreach(showSomethingNice(before, after)) // this does not work!
-      case _ =>
+      case TBlock(st) => st.foreach(showSomethingNice(before, after)) // todo this does not work! the environments are different
 
     @tailrec
     def doRepl(line: String, env: Env): Unit = {
@@ -37,7 +36,7 @@ package eval {
         typed <- doValidation(env)(parsed)
         env2 <- eval(typed)(env)
       } yield {
-        showSomethingNice(env,env2)(typed)
+        showSomethingNice(env, env2)(typed)
         env2
       }
 
@@ -52,7 +51,7 @@ package eval {
     }
 
     print("> ")
-    doRepl(scanner.nextLine(), Env.Default)
+    doRepl(scanner.nextLine(), Env.Default.copy(vars = Env.Default.vars ++ builtins.ReplBuiltins))
   }
 
 
@@ -60,8 +59,9 @@ package eval {
     ast match
       case KBlock(stmts) =>
         // todo collect types declared in the block
-        stmts.map(doValidation(env)).flattenList.map(TBlock)
-      case KExprStatement(e) => types.assignType(env.bindingTypes)(e).map(TExprStmt)
+        //   collect functions declared in the block
+        stmts.map(doValidation(env)).flattenList.map(TBlock.apply)
+      case KExprStatement(e) => types.assignType(env.bindingTypes)(e).map(TExprStmt.apply)
       case KFunDef(name, ty, body) =>
         def resolveType(typesInScope: Map[String, TypeDescriptor])(t: TypeSpec): Either[KittenTypeError, KDataType] = t match
           case TypeCtor(name, tyargs) => typesInScope.get(name) match
@@ -72,7 +72,7 @@ package eval {
               if typeDesc.tparms.lengthCompare(tyargs) != 0 then
                 Left(KittenTypeError(s"Expected ${typeDesc.tparms.length} type arguments, got ${tyargs.length}"))
               else (name, tyargs) match
-                case ("List", List(item)) => resolveType(typesInScope)(item).map(KList)
+                case ("List", List(item)) => resolveType(typesInScope)(item).map(KList.apply)
                 case ("int", Nil) => Right(KInt)
                 case ("str", Nil) => Right(KString)
                 case ("bool", Nil) => Right(KBool)
@@ -139,7 +139,7 @@ package eval {
     def push(v: KValue): Env = Env(vars, v :: stack, typesInScope)
 
     def stackToString: String = stack.mkString("[", " :: ", "]")
-    def varsToString: String = (vars -- Env.Default.vars.keys).map { case (k, v) => s"${k}: $v" }.mkString("{", ", ", "}")
+    def varsToString: String = (vars -- Env.Default.vars.keys).map { case (k, v) => s"$k: $v" }.mkString("{", ", ", "}")
     def bindingTypes: types.BindingTypes = vars.map((k, v) => (k, v.dataType))
 
     export typesInScope.get as getType
@@ -158,6 +158,13 @@ package eval {
           Left(KittenEvalError.stackTypeError(t, env))
         else
           definition(env)
+            // Remove bindings created by the function call from the environment.
+            // Just keep the stack.
+            // todo scoping:
+            //  what is a block in the source,
+            //  should we use that as the scope delimiter,
+            //  should functions use one as body
+            .map(e => env.copy(stack = e.stack))
 
   def eval(stmt: TypedStmt)(env: Env): EvalResult = stmt match
     case TBlock(stmts) =>
@@ -174,9 +181,7 @@ package eval {
     case TPushPrim(ty, value) => Right(env.push(VPrimitive(ty, value)))
     case TPushList(ty, items) =>
       val stackLen = env.stack.length
-      items.foldLeft[EvalResult](Right(env)) { (env, item) =>
-        env.flatMap(e => eval(item)(e))
-      }.flatMap(env => {
+      eval(TBlock(items.map(TExprStmt.apply)))(env).flatMap(env => {
         val newItems = env.stack.length - stackLen
         if newItems != items.length then
           Left(KittenEvalError(s"Problem building list, expected ${items.length} new items on stack, got $newItems. This should have been caught by the type checker."))
