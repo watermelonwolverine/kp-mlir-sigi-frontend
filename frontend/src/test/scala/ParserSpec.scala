@@ -2,10 +2,12 @@ package de.cfaed.kitten
 
 import ast.*
 import eval.Env
-import types.{StackType, TypingScope}
+import types.{KPrimitive, StackType, TypingScope}
 
 import org.scalatest.funsuite.AnyFunSuite
-import org.scalatest.matchers.should._
+import org.scalatest.matchers.should.*
+
+import scala.annotation.targetName
 
 /**
   * @author Clément Fournier &lt;clement.fournier@tu-dresden.de&gt;
@@ -24,24 +26,49 @@ class ParserSpec extends AnyFunSuite with Matchers {
     }
   }
 
-  private def number(i: Int) = PushPrim(types.KInt, i)
+  object AstBuildingDsl {
 
-  checkExpr("1 2", Chain(number(1), number(2)))
-  checkExpr("1 2 3", Chain(Chain(number(1), number(2)), number(3)))
-  checkExpr("1 2 show", Chain(Chain(number(1), number(2)), FunApply("show")))
-  checkExpr("{ show }", Quote(FunApply("show")))
-  checkExpr("\\show", Quote(FunApply("show")))
-  checkExpr("\\*", Quote(FunApply("*")))
-  checkExpr("true", PushPrim.PushTrue)
-  checkExpr("false", PushPrim.PushFalse)
-  checkExpr(""" "a" "b"  """, Chain(PushPrim(types.KString, "a"), PushPrim(types.KString, "b")))
+    extension (e1: KExpr)
+      @targetName("chain")
+      def ~(e2: KExpr): Chain = Chain(e1, e2)
 
-  checkExpr("-> x, y; x y", Chain(Chain(NameTopN(List("x", "y")), FunApply("x")), FunApply("y")))
-  checkExpr("-> x;", NameTopN(List("x")))
-  checkExpr("-> x, y; y", Chain(NameTopN(List("x", "y")), FunApply("y")))
+    def p[T](t: T)(using KPrimitive[T]): PushPrim[T] = PushPrim(implicitly[KPrimitive[T]], t)
+    def app(name:String): FunApply = FunApply(name)
+    def names(names: String*): NameTopN = NameTopN(names.toList)
 
-  checkExpr("-> x, y; x * y", Chain(NameTopN(List("x", "y")), Chain(Chain(FunApply("x"), FunApply("y")), FunApply("*"))))
-  checkTreeMatches("define double(int-> int): ->x; 2*x;;"){
+    given KPrimitive[Int] = types.KInt
+    given KPrimitive[String] = types.KString
+    given KPrimitive[Boolean] = types.KBool
+  }
+
+  import AstBuildingDsl.*
+  import AstBuildingDsl.given
+
+  checkExpr("1 2", p(1) ~ p(2))
+  checkExpr("1 2 3", (p(1) ~ p(2)) ~ p(3))
+  checkExpr("1 2 show", (p(1) ~ p(2)) ~ app("show"))
+  checkExpr("{ show }", Quote(app("show")))
+  checkExpr("\\show", Quote(app("show")))
+  checkExpr("\\*", Quote(app("*")))
+  checkExpr("true", p(true))
+  checkExpr("false", p(false))
+  checkExpr(""" "a" "b"  """, p("a") ~ p("b"))
+
+  checkExpr("-> x, y; x y", names("x", "y") ~ app("x") ~ app("y"))
+  checkExpr("-> x;", names("x"))
+  checkExpr("-> x, y; y", names("x", "y") ~ app("y"))
+
+  checkExpr("if (true) { 1 } else { 2 }",
+    p(true) ~ (Quote(p(1)) ~ Quote(p(2)) ~ app(builtins.Intrinsic_if))
+  )
+
+  checkExpr("if { 1 } else { 2 }",
+    Quote(p(1)) ~ Quote(p(2)) ~ app(builtins.Intrinsic_if)
+  )
+
+
+  checkExpr("-> x, y; x * y", names("x", "y") ~ (app("x") ~ app("y") ~ app("*")))
+  checkTreeMatches("define double(int-> int): ->x; 2*x;;") {
     case KBlock(List(KFunDef("double", FunType(Nil, List(_), List(_)), _))) =>
   }
 }

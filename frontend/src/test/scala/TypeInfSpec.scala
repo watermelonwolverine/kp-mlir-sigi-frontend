@@ -22,6 +22,7 @@ class TypeInfSpec extends AnyFunSuite {
     }
   }
 
+
   checkType("1 2", "-> int, int")
   checkType("1 2 show", "-> int")
   checkType("{ show }", "-> ('a ->)")
@@ -30,6 +31,8 @@ class TypeInfSpec extends AnyFunSuite {
   checkType("-> x;", "'a ->")
   checkType("-> x, y; y", "'a, 'b -> 'b")
   checkType("if (true) { 1 } else { 2 }", "-> int")
+  checkType("if { 1 } else { 2 }", "bool -> int")
+  checkType("true if { 1 } else { 2 }", "-> int")
   checkType("{->a,b;b} -> snd; 1 2 snd", "-> int")
 
   checkType("1 2 -> x, y; x y", "-> int, int")
@@ -37,6 +40,9 @@ class TypeInfSpec extends AnyFunSuite {
   checkType("1 2 ((-> x, y; x) y)", "-> int, int")
   checkType("1 2 (-> x, y; (x y))", "-> int, int")
 
+  checkType("[]", "-> List['a]")
+  checkType("[2]", "-> List[int]")
+  checkType("[{->x; x}]", "-> List[('a -> 'a)]")
   checkType("-> x, y; [x, y]", "'a, 'a -> List['a]")
   checkType("-> x, y; x * y", "int, int -> int")
   checkType("-> x, y; x x * y", "int, int -> int, int")
@@ -44,6 +50,14 @@ class TypeInfSpec extends AnyFunSuite {
   // todo this executes correctly but types to
   //  -> int, ('a, 'b -> 'b), str
   checkType("\"a\" 2 {->a,b; b} -> snd; snd", "-> int")
+  // Same as previous. Given application of terms with
+  // types (-> 'a, 'b) ('c ->), we should infer that 'b = 'c.
+  // This is because the left term will push and 'a, then a 'b,
+  // while the right term will pop a 'c.
+  // When the arities match, we have (-> 'a, 'b) ('c, 'd ->)
+  // where 'a = 'c and 'b = 'd. That's because consumed arguments 
+  // are popped in reverse.
+  checkType("(1 true) show", "-> int")
 
 
 }

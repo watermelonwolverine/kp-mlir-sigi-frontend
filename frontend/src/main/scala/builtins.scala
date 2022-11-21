@@ -91,18 +91,18 @@ package builtins {
         println("typeof: " + hd.dataType)
         Right(stack)
     }),
-    // if:   (-> 'a), (-> 'a), bool -> 'a
+    // if:   bool, (-> 'a), (-> 'a) -> 'a
     fun(Intrinsic_if, StackType.generic1(tv => {
       val thunkT = KFun(StackType.pushOne(tv))
       StackType(
-        consumes = List(thunkT, thunkT, types.KBool),
+        consumes = List(types.KBool, thunkT, thunkT),
         produces = List(tv)
       )
     }), t => env => {
       env.stack match
-        case VFun(_, _, thenDef) :: VFun(_, _, elseDef) :: VPrimitive(types.KBool, b) :: tl =>
+        case VFun(_, _, elseDef) :: VFun(_, _, thenDef) :: VPrimitive(types.KBool, condition) :: tl =>
           val newEnv = env.copy(stack = tl)
-          if (b) thenDef(newEnv) else elseDef(newEnv)
+          if (condition) thenDef(newEnv) else elseDef(newEnv)
         case _ => Left(KittenEvalError.stackTypeError(t, env))
     }),
   )

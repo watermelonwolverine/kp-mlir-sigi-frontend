@@ -8,6 +8,8 @@ package types {
   import eval.Env
   import types.StackType.canonicalize
 
+  import de.cfaed.kitten.types.KInferenceVar.seqNum
+
   import java.util.Objects
   import scala.annotation.tailrec
   import scala.collection.mutable
@@ -36,7 +38,8 @@ package types {
     override def toString: String = this match
       case TChain(stackTy, a, b) => s"(($a $b) : $stackTy)"
       case TPushList(ty, items) => items.mkString("[", ", ", s"] : $ty")
-      case TPushPrim(ty, value) => value.toString
+      case TPushPrim(KString, value) => s"\"$value\""
+      case TPushPrim(_, value) => value.toString
       case TFunApply(stackTy, name) => s"($name : $stackTy)"
       case t@TPushQuote(term) => s"({$term} : ${t.stackTy})"
       case TNameTopN(stackTy, names) => names.zip(stackTy.consumes).map((s, dt) => s"$s: $dt").mkString("-> ", ", ", ";")
@@ -64,7 +67,7 @@ package types {
       case KFun(stackType) => "(" + stackType.toString + ")"
       case KList(item) => s"List[$item]"
       case tv: KTypeVar => tv.name
-      case iv: KInferenceVar => iv.origin.name + System.identityHashCode(this)
+      case iv: KInferenceVar => iv.origin.name + iv.id
 
   }
 
@@ -83,6 +86,10 @@ package types {
   }
   class KInferenceVar(val origin: KTypeVar) extends KDataType {
     var instantiation: KDataType = _
+    private[types] val id = seqNum.also { _ => seqNum += 1 }
+  }
+  object KInferenceVar {
+    private var seqNum = 0
   }
 
   sealed trait KPrimitive[T] extends KDataType
@@ -313,23 +320,26 @@ package types {
           // println(s"Chain ($ta) ($tb) in env ${right._2.bindings -- Env.default.toSymbolic.bindings.keys}")
 
           @tailrec
-          def chainTypeCheck(ctx: TypingCtx)(produced: List[KDataType],
-                                             consumed: List[KDataType]): Either[KittenTypeError, StackType] = {
+          def chainTypeCheck(ctx: TypingCtx)
+                            (moreIn: List[KDataType], moreOut: List[KDataType])
+                            // produced and consumed have same length
+                            (produced: List[KDataType],
+                             consumed: List[KDataType]): Option[KittenTypeError] = {
             (produced, consumed) match
               case (a :: atl, b :: btl) =>
-                if (ctx.unify(a, b)) chainTypeCheck(ctx)(atl, btl)
-                else Left(KittenTypeError.cannotApply(e, ta, tb, a, b))
-              case (Nil, Nil) => Right(StackType(consumes = ta.consumes, produces = tb.produces)) // fully saturated call
-              case (Nil, notApplied) => Right(StackType(consumes = ta.consumes ::: notApplied, produces = tb.produces))
-              case (notConsumed, Nil) =>
-                Right(StackType(
-                  consumes = ta.consumes,
-                  produces = notConsumed ::: tb.produces,
-                ))
+                if (ctx.unify(a, b)) chainTypeCheck(ctx)(moreIn, moreOut)(atl, btl)
+                else Some(KittenTypeError.cannotApply(e, ta, tb, a, b))
+              case (Nil, Nil) => None
           }
 
-          chainTypeCheck(scope.ctx)(ta.produces, tb.consumes)
-            .map(st => (TChain(st, leftTree, rightTree), rightScope))
+          val commonLen = math.min(ta.produces.length, tb.consumes.length)
+          val (prod, toMatch) = ta.produces.splitAtRight(commonLen).pp("ta.produces ")
+          val (cons, toMatch2) = tb.consumes.splitAtRight(commonLen).pp("tb.consumes ")
+
+          // produces more stuff than what is consumed
+          chainTypeCheck(scope.ctx)(cons, prod)(toMatch, toMatch2)
+            .toLeft(StackType(consumes = cons ++ ta.consumes, produces = prod ++ tb.produces))
+            .map(st => (TChain(st, leftTree, rightTree).pp(), rightScope))
         }
       } yield newEnv
 
