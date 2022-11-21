@@ -13,10 +13,22 @@ package ast {
   import tokens.*
   import types.{KDataType, KFun, KPrimitive, StackType}
 
+  import de.cfaed.kitten.tokens
+
   /**
     * @author Clément Fournier &lt;clement.fournier@tu-dresden.de&gt;
     */
   sealed trait KNode
+
+  sealed trait KStatement extends KNode
+  case class KBlock(stmts: List[KStatement]) extends KStatement
+  case class KFunDef(name: String, ty: FunType, body: KExpr) extends KStatement
+  case class KExprStatement(e: KExpr) extends KStatement
+
+  /** The result of parsing a type. Some of the components may be unresolved. */
+  sealed trait TypeSpec
+  case class TypeCtor(name: String, tyargs: List[TypeSpec]=Nil) extends TypeSpec
+  case class FunType(typarms: List[String], consumes: List[TypeSpec], produces: List[TypeSpec]) extends TypeSpec
 
   sealed trait KExpr extends KNode {
     override def toString: String = this match
@@ -50,10 +62,32 @@ package ast {
     private def thunk =
       LBRACE ~> (exprSeq | accept("operator", { case OP(n) => FunApply(n) })) <~ RBRACE ^^ Quote
 
+    private def dty: Parser[TypeSpec] =
+      id ~ tyArgs.? ^^ { case name ~ tyargs => TypeCtor(name, tyargs.getOrElse(Nil)) }
+        | LPAREN ~> funTy <~ RPAREN // funtype
+
+    // note that the normal kitten grammar uses angle brackets
+    private def tyArgs: Parser[List[TypeSpec]] = LBRACKET ~> rep1sep(dty, COMMA) <~ RBRACKET
+    private def tyParms: Parser[List[String]] = LBRACKET ~> rep1sep(id, COMMA) <~ RBRACKET
+
+    private def funTy: Parser[FunType] =
+      tyParms.? ~ repsep(dty, COMMA) ~ ARROW ~ repsep(dty, COMMA) ^^ {
+        case typarms ~ consumes ~ _ ~ produces => FunType(typarms.getOrElse(Nil), consumes, produces)
+      }
+
+    private def inParens[P](p: Parser[P]): Parser[P] = LPAREN ~> p <~ RPAREN
+
+    private def funDef: Parser[KFunDef] =
+    // note that the normal kitten grammar does not use a semi
+      DEFINE ~> id ~ inParens(funTy) ~ COLON ~ exprSeq <~ PHAT_SEMI ^^ {
+        case name ~ ty ~ _ ~ body => KFunDef(name, ty, body)
+      }
+
     private def parexpr = LPAREN ~> exprSeq <~ RPAREN
 
     private def opAsFunApply = accept("operator", { case OP(n) => FunApply(n) })
-    private def identAsFunApply = accept("identifier", { case ID(n) => FunApply(n) })
+    private def id: Parser[String] = accept("identifier", { case ID(n) => n })
+    private def identAsFunApply = id ^^ FunApply
 
     private def ifelse: Parser[KExpr] =
       (IF ~> parexpr.? ~ thunk
@@ -62,7 +96,7 @@ package ast {
         ) ^^ {
         case (cond: Option[KExpr]) ~ (thenThunk: Quote) ~ (elifs: List[KExpr ~ Quote]) ~ (elseThunk: Quote) =>
           def makeIf(thenThunk: Quote, elseThunk: Quote): KExpr =
-            Chain(Chain(thenThunk, elseThunk), FunApply(eval.Env.Intrinsic_if))
+            Chain(Chain(thenThunk, elseThunk), FunApply(builtins.Intrinsic_if))
 
           val foldedElseIf = elifs.foldRight[Quote](elseThunk) {
             case (c ~ t, f) => Quote(Chain(c, makeIf(t, f)))
@@ -112,39 +146,47 @@ package ast {
     private def exprSeq: Parser[KExpr] =
       rep1(sequenceableExpr) ^^ (_ reduceLeft Chain.apply)
 
-    def apply(source: String): Either[KittenParseError, KExpr] = {
+    private def expr: Parser[KExpr] = exprSeq
+    private def statement: Parser[KStatement] = funDef | expr <~ PHAT_SEMI.? ^^ KExprStatement
+    private def statementList: Parser[KBlock] = rep(statement) ^^ KBlock
+
+    def apply(source: String): Either[KittenParseError, KExpr] = apply(source, expr)
+
+    def apply[T](source: String, parser: Parser[T]): Either[KittenParseError, T] = {
       val reader = new KTokenScanner(source)
-      exprSeq(reader) match {
+      parser(reader) match {
         case NoSuccess(msg, _) => Left(KittenParseError(msg))
         case Success(result, input) =>
-          if (input.atEnd) validate(result)
+          if (input.atEnd) Right(result)
           else Left(KittenParseError(s"Unparsed tokens: ${source.substring(math.max(0, input.pos.column - 1))}"))
       }
     }
 
-    private def validate(e: KExpr): Either[KittenParseError, KExpr] = {
-      e match
-        case Chain(a, b) =>
-          for {
-            a1 <- validate(a)
-            b1 <- validate(b)
-          } yield Chain(a1, b1)
-        case Quote(term) => validate(term).map(Quote)
-        case node@NameTopN(names) =>
-          if names.distinct.lengthCompare(names) != 0 then
-            Left(KittenParseError.namesShouldBeUnique(node))
-          else
-            Right(node)
-        case e => Right(e)
+    private def validate(e: KStatement): Option[KittenParseError] = e match
+      case KBlock(stmts) => stmts.foldLeft[Option[KittenParseError]](None)((a, b) => a.orElse(validate(b)))
+      case KFunDef(_, _, body) => validate(body)
+      case KExprStatement(e) => validate(e)
 
+    private def validate(e: KExpr): Option[KittenParseError] = e match
+      case Chain(a, b) => validate(a).orElse(validate(b))
+      case Quote(term) => validate(term)
+      case node@NameTopN(names) =>
+        if names.distinct.lengthCompare(names) != 0 then
+          Some(KittenParseError.namesShouldBeUnique(node))
+        else
+          None
+      case _ => None
+
+
+    def parseExpr(code: String): Either[KittenCompilationError, KExpr] = {
+      KittenParser(code, expr).flatMap(e => validate(e).toLeft(e))
     }
+
+    def parseStmt(code: String): Either[KittenCompilationError, KStatement] = {
+      KittenParser(code, statementList).flatMap(e => validate(e).toLeft(e))
+    }
+
   }
 
-
-  case class ParsedCode(source: String, ast: KExpr)
-
-  def parse(code: String): Either[KittenCompilationError, ParsedCode] = {
-    KittenParser(code).map(e => ParsedCode(code, e))
-  }
 
 }

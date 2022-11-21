@@ -5,8 +5,8 @@ import java.util.Scanner
 
 package eval {
 
-  import de.cfaed.kitten.ast as parser
   import ast.*
+  import datamodel.{TypeDescriptor, TypeParm}
   import types.*
   import types.StackType.canonicalize
 
@@ -17,17 +17,22 @@ package eval {
   def repl(): Unit = {
     val scanner = Scanner(System.in)
 
+    def showSomethingNice(t: TypedStmt): Unit = t match
+      case TExprStmt(e) => println(s"Evaluated expr of type ${e.stackTy}")
+      case TFunDef(name, ty, _) => println(s"Defined function $name: $ty")
+      case TBlock(st) => st.foreach(showSomethingNice)
+      case _ =>
+
     @tailrec
     def doRepl(line: String, env: Env): Unit = {
       if (line == "exit") return
 
       val result: Either[KittenError, Env] = for {
-        parsed <- parser.parse(line)
-        typed <- types.assignType(env.bindingTypes)(parsed.ast)
+        parsed <- KittenParser.parseStmt(line)
+        typed <- doValidation(env)(parsed)
         env2 <- eval(typed)(env)
       } yield {
-        println(s"  ${parsed.ast}    : ${canonicalize(typed.stackTy)}")
-        println(s"  ${env2.stackToString}")
+        showSomethingNice(typed)
         env2
       }
 
@@ -42,8 +47,52 @@ package eval {
     }
 
     print("> ")
-    doRepl(scanner.nextLine(), Env.default)
+    doRepl(scanner.nextLine(), Env.Default)
   }
+
+
+  def doValidation(env: Env)(ast: KStatement): Either[KittenError, TypedStmt] = {
+    ast match
+      case KBlock(stmts) =>
+        // todo collect types declared in the block
+        stmts.map(doValidation(env)).flattenList.map(TBlock)
+      case KExprStatement(e) => types.assignType(env.bindingTypes)(e).map(TExprStmt)
+      case KFunDef(name, ty, body) =>
+        def resolveType(typesInScope: Map[String, TypeDescriptor])(t: TypeSpec): Either[KittenTypeError, KDataType] = t match
+          case TypeCtor(name, tyargs) => typesInScope.get(name) match
+            case Some(datamodel.TypeParm(tv)) =>
+              if tyargs.nonEmpty then Left(KittenTypeError(s"Type parameter $name cannot have type arguments"))
+              else Right(tv)
+            case Some(typeDesc) =>
+              if typeDesc.tparms.lengthCompare(tyargs) != 0 then
+                Left(KittenTypeError(s"Expected ${typeDesc.tparms.length} type arguments, got ${tyargs.length}"))
+              else (name, tyargs) match
+                case ("List", List(item)) => resolveType(typesInScope)(item).map(KList)
+                case ("int", Nil) => Right(KInt)
+                case ("str", Nil) => Right(KString)
+                case ("bool", Nil) => Right(KBool)
+                case _ => ??? // todo create user type
+            case None => Left(KittenTypeError(s"Undefined type: $name"))
+
+          case ft: FunType => resolveFunType(typesInScope)(ft)
+
+        def resolveFunType(env: Map[String, TypeDescriptor])(t: FunType): Either[KittenTypeError, KFun] =
+          val FunType(tparms, consumes, produces) = t
+          val tvGen = KTypeVar.typeVarGenerator()
+          val typesInScope: Map[String, TypeDescriptor] = env ++ tparms.map(name => (name, TypeParm(tvGen())))
+          for {
+            cs <- consumes.map(resolveType(typesInScope)).flattenList
+            ps <- produces.map(resolveType(typesInScope)).flattenList
+          } yield KFun(StackType(consumes = cs, produces = ps))
+
+        for {
+          // todo should unify the type of the body and the type of the signature
+          // todo should defer type checking of the body
+          KFun(stackTy) <- resolveFunType(env.typesInScope)(ty)
+          typedBody <- types.assignType(env.bindingTypes)(body)
+        } yield TFunDef(name, stackTy, typedBody)
+  }
+
 
   type EvalResult = Either[KittenEvalError, Env]
 
@@ -76,116 +125,22 @@ package eval {
   case class VList(ty: types.KList, items: List[KValue]) extends KValue
 
 
-
-
-  case class Env(vars: Map[String, KValue], stack: List[KValue]) {
+  case class Env(vars: Map[String, KValue],
+                 stack: List[KValue],
+                 typesInScope: Map[String, datamodel.TypeDescriptor]) {
     def apply(name: String): Either[KittenEvalError, KValue] = vars.get(name).toRight(KittenEvalError.undef(name))
 
-    def push(v: KValue): Env = Env(vars, v :: stack)
+    def push(v: KValue): Env = Env(vars, v :: stack, typesInScope)
 
     def stackToString: String = stack.mkString("[", " :: ", "]")
-    def varsToString: String = (vars -- Env.default.vars.keys).map { case (k, v) => s"${k}: $v" }.mkString("{", ", ", "}")
+    def varsToString: String = (vars -- Env.Default.vars.keys).map { case (k, v) => s"${k}: $v" }.mkString("{", ", ", "}")
     def bindingTypes: types.BindingTypes = vars.map((k, v) => (k, v.dataType))
+
+    export typesInScope.get as getType
   }
 
   object Env {
-    private def binOp(name: String, definition: (Int, Int) => Int): (String, VFun) = {
-      fun(name, types.BinOpType, t => env => {
-        env.stack match
-          case VNum(a) :: VNum(b) :: tail =>
-            try {
-              val res = definition(a, b)
-              Right(env.copy(stack = VNum(res) :: tail))
-            } catch {
-              case e: Exception => Left(KittenEvalError(s"Error executing op $name: ${e.getMessage}"))
-            }
-          case _ => Left(KittenEvalError.stackTypeError(t, env))
-      })
-    }
-
-    private def unaryOp(name: String, definition: Int => Int): (String, VFun) = {
-      fun(name, types.UnaryOpType, t => env => {
-        env.stack match
-          case VNum(a) :: tail =>
-            try {
-              val res = definition(a)
-              Right(env.copy(stack = VNum(res) :: tail))
-            } catch {
-              case e: Exception => Left(KittenEvalError(s"Error executing op $name: ${e.getMessage}"))
-            }
-          case _ => Left(KittenEvalError.stackTypeError(t, env))
-      })
-    }
-
-    private def fun(name: String, stackType: StackType, definition: StackType => Env => EvalResult): (String, VFun) = {
-      (name, VFun(Some(name), stackType, definition(stackType)))
-    }
-    private def stackFun(name: String, stackType: StackType, definition: PartialFunction[List[KValue], Either[KittenEvalError, List[KValue]]]): (String, VFun) = {
-      (name, VFun(Some(name), stackType, env => {
-        definition.applyOrElse(env.stack, _ => Left(KittenEvalError.stackTypeError(stackType, env)))
-          .map(e => env.copy(stack = e))
-      }))
-    }
-
-    // intrinsics should have a name which cannot be an identifier in the source lang
-    val Intrinsic_if = ":if:"
-
-    private val predefinedSymbols: Map[String, KValue] = Map(
-      binOp("+", _ + _),
-      binOp("-", _ - _),
-      binOp("*", _ * _),
-      binOp("/", _ / _),
-      binOp("%", _ % _),
-      unaryOp("unary-", a => -a),
-      unaryOp("unary+", a => a),
-      unaryOp("unary~", a => a ^ a),
-      stackFun("pop", StackType.generic1(tv => StackType(consumes = List(tv))), {
-        case _ :: tl => Right(tl)
-      }),
-      // duplicate top of the stack
-      stackFun("dup", StackType.generic1(tv => StackType(consumes = List(tv), produces = List(tv, tv))), {
-        case hd :: tl => Right(hd :: hd :: tl)
-      }),
-      // consume top of the stack and print it
-      // this is `pp pop`
-      stackFun("show", StackType.generic1(tv => StackType(consumes = List(tv))), {
-        case hd :: tl =>
-          println(s"show: $hd")
-          Right(tl)
-      }),
-      // print and pass: print the top of the stack but leave it there
-      // this function is equivalent to `dup show`
-      stackFun("pp", StackType.generic1(StackType.symmetric1), {
-        case stack@(hd :: _) =>
-          println(s"pp: $hd")
-          Right(stack)
-      }),
-      fun("env", StackType(), _ => env => {
-        println(s"stack: ${env.stackToString}")
-        println(s"env: ${env.varsToString}")
-        Right(env)
-      }),
-      stackFun("typeof", StackType.generic1(StackType.symmetric1), {
-        case stack@(hd :: _) =>
-          println("typeof: " + hd.dataType)
-          Right(stack)
-      }),
-      // if:   (-> 'a), (-> 'a), bool -> 'a
-      fun(Intrinsic_if, StackType.generic1(tv => {
-        val thunkT = KFun(StackType.pushOne(tv))
-        StackType(
-          consumes = List(thunkT, thunkT, types.KBool),
-          produces = List(tv)
-        )
-      }), t => env => {
-        env.stack match
-          case VFun(_, _, thenDef) :: VFun(_, _, elseDef) :: VPrimitive(types.KBool, b) :: tl =>
-            val newEnv = env.copy(stack = tl)
-            if (b) thenDef(newEnv) else elseDef(newEnv)
-          case _ => Left(KittenEvalError.stackTypeError(t, env))
-      }),
-    )
-    val default: Env = Env(predefinedSymbols, Nil)
+    val Default: Env = Env(builtins.PredefinedSymbols, Nil, TypeDescriptor.Predefined)
   }
 
   def applyValue(env: Env)(value: KValue): EvalResult =
@@ -198,6 +153,16 @@ package eval {
         else
           definition(env)
 
+  def eval(stmt: TypedStmt)(env: Env): EvalResult = stmt match
+    case TBlock(stmts) =>
+      stmts.foldLeft[EvalResult](Right(env)) { (env, newStmt) =>
+        env.flatMap(eval(newStmt))
+      }
+    case TFunDef(name, ty, body) =>
+      Right(
+        env.copy(vars = env.vars.updated(name, VFun(Some(name), ty, eval(body))))
+      )
+    case TExprStmt(e) => eval(e)(env)
 
   def eval(knode: types.TypedExpr)(env: Env): EvalResult = knode match
     case TPushPrim(ty, value) => Right(env.push(VPrimitive(ty, value)))

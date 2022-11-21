@@ -26,7 +26,9 @@ package tokens {
   case object ELIF extends KToken
   case object TRUE extends KToken
   case object FALSE extends KToken
+  case object DEFINE extends KToken
   case object SEMI extends KToken
+  case object PHAT_SEMI extends KToken
   case object COMMA extends KToken
   case object COLON extends KToken
   case object BACKSLASH extends KToken
@@ -70,6 +72,7 @@ package tokens {
     | "}" ^^^ RBRACE
     | "[" ^^^ LBRACKET
     | "]" ^^^ RBRACKET
+    | ";;" ^^^ PHAT_SEMI
     | ";" ^^^ SEMI
     | "," ^^^ COMMA
     | "<" ^^^ LANGLE
@@ -82,6 +85,7 @@ package tokens {
         | "elif" ^^^ ELIF
         | "true" ^^^ TRUE
         | "false" ^^^ FALSE
+        | "define" ^^^ DEFINE
 
     override def token: KittenLexer.Parser[KittenLexer.Token] =
       keyword | ident | number | punct | op | string 

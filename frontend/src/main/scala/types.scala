@@ -16,7 +16,13 @@ package types {
 
 
   /** Typed tree. */
-  sealed trait TypedExpr {
+  sealed trait TypedTree
+  sealed trait TypedStmt extends TypedTree
+  case class TFunDef(name: String, ty: StackType, body: TypedExpr) extends TypedStmt
+  case class TExprStmt(e: TypedExpr) extends TypedStmt
+  case class TBlock(stmts: List[TypedStmt]) extends TypedStmt
+
+  sealed trait TypedExpr extends TypedTree {
     def stackTy: StackType
 
     def erase: KExpr = this match
