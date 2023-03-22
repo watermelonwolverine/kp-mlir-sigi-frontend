@@ -19,10 +19,9 @@ class TypeInfSpec extends AnyFunSuite {
         typed <- types.assignType(Env.Default.bindingTypes)(parsed)
       } yield typed.stackTy
 
-      assertResult(Right(ty))(result.right.map(_.toString))
+      assertResult(Right(ty))(result.map(_.toString))
     }
   }
-
 
   checkType("1 2", "-> int, int")
   checkType("1 2 pop", "-> int")
@@ -60,5 +59,5 @@ class TypeInfSpec extends AnyFunSuite {
   // are popped in reverse.
   checkType("(1 true) pop", "-> int")
 
-
+  checkType("\\dup dup", "-> ('a -> 'a, 'a), ('a -> 'a, 'a)")
 }

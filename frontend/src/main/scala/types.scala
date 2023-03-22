@@ -67,6 +67,14 @@ package types {
       case tv: KTypeVar => tv.name
       case iv: KInferenceVar => iv.origin.name + iv.id
 
+
+    def contains(ivar: KInferenceVar): Boolean = {
+      this match
+        case a if ivar == a => true
+        case KFun(st) => st.consumes.exists(_.contains(ivar)) || st.produces.exists(_.contains(ivar))
+        case KList(item) => item.contains(ivar)
+        case _ => false
+    }
   }
 
   // both use identity semantics for Object::equals
@@ -166,14 +174,15 @@ package types {
   val UnaryOpType = StackType(consumes = List(KInt), produces = List(KInt))
 
   private[types] class TypingCtx {
-    private val toIvars = mutable.Map[KTypeVar, KInferenceVar]()
 
     /** Replace type vars with fresh inference vars. */
-    def mapToIvars(st: StackType): StackType =
+    def mapToIvars(st: StackType): StackType = {
+      val toIvars = mutable.Map[KTypeVar, KInferenceVar]()
       TySubst {
         case t: KTypeVar => toIvars.getOrElseUpdate(t, KInferenceVar(t))
         case t => t
       }.substStackType(st)
+    }
 
 
     private class Ground {
@@ -209,6 +218,7 @@ package types {
           if a.instantiation != null then
             return unify(a.instantiation, b)
 
+          assert(!b.contains(a))
           a.instantiation = b
           true
 
