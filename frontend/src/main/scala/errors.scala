@@ -25,8 +25,12 @@ case class KittenTypeError(msg: String) extends KittenCompilationError {
 object KittenTypeError {
   def undef(name: String): KittenTypeError = KittenTypeError(s"Undefined name '$name'")
   def mismatch(t1: StackType, t2: StackType): KittenTypeError = KittenTypeError(
-    s"Mismatched list item types: $t1 is not compatible with $t2"
+    s"Mismatched stack types: $t1 is not compatible with $t2"
   )
+  def mismatch(a: KDataType, b: KDataType) = KittenTypeError(
+    s"Mismatched types: $a is not compatible with $b"
+  )
+  
   def cannotBeListItem(t1: StackType): KittenTypeError = KittenTypeError(
     s"Type cannot be a list item: $t1 (quote expression to box it)"
   )

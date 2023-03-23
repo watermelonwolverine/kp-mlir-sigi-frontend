@@ -8,7 +8,7 @@ package types {
   import eval.Env
   import types.StackType.canonicalize
 
-  import java.util.Objects
+  import java.util.{Locale, Objects}
   import scala.annotation.tailrec
   import scala.collection.mutable
   import scala.util.Right
@@ -55,9 +55,9 @@ package types {
   }
   case class TNameTopN(override val stackTy: StackType, names: List[String]) extends TypedExpr
 
+  /** Supertrait for KDataType and KRow[I]Var. */
+  sealed trait KStackTypeItem {
 
-  /** Types of stack values. */
-  sealed trait KDataType {
     override def toString: String = this match
       case KInt => "int"
       case KString => "str"
@@ -65,6 +65,8 @@ package types {
       case KFun(stackType) => "(" + stackType.toString + ")"
       case KList(item) => s"List[$item]"
       case tv: KTypeVar => tv.name
+      case rv: KRowVar => rv.name
+      case riv: KRowIVar => riv.origin.name + riv.id
       case iv: KInferenceVar => iv.origin.name + iv.id
 
 
@@ -77,26 +79,62 @@ package types {
     }
   }
 
+  /** Types of stack values. */
+  sealed trait KDataType extends KStackTypeItem {
+
+  }
+
   // both use identity semantics for Object::equals
   class KTypeVar(val name: String) extends KDataType
   object KTypeVar {
-    def typeVarGenerator(): () => KTypeVar = {
+    private[types] def varNameGenerator(): () => String = {
       val names = "abcdefghijklmnopqrstuv"
       var i = 0
       () => {
         val k = i
         i += 1
-        KTypeVar("'" + names(k % names.length))
+        "'" + names(k % names.length)
       }
     }
+    def typeVarGenerator(): () => KTypeVar = {
+      // for some reason I can't write this with andThen
+      val nameGen = varNameGenerator()
+      () => KTypeVar(nameGen())
+    }
   }
+
   class KInferenceVar(val origin: KTypeVar) extends KDataType {
     var instantiation: KDataType = _
-    private[types] val id = KInferenceVar.seqNum.also { _ => KInferenceVar.seqNum += 1 }
+    private[types] val id = {
+      val id = KInferenceVar.seqNum
+      KInferenceVar.seqNum += 1
+      id
+    }
   }
   object KInferenceVar {
     private var seqNum = 0
   }
+
+  class KRowVar(val name: String) extends KStackTypeItem
+  object KRowVar {
+    def rowVarGenerator(): () => KRowVar = {
+      // for some reason I can't write this with andThen
+      val nameGen = KTypeVar.varNameGenerator()
+      () => KRowVar(nameGen().toUpperCase(Locale.ROOT))
+    }
+  }
+  class KRowIVar(val origin: KRowVar) extends KStackTypeItem {
+    var instantiation: List[KDataType] = _
+    private[types] val id = {
+      val id = KRowIVar.seqNum
+      KRowIVar.seqNum += 1
+      id
+    }
+  }
+  object KRowIVar {
+    private var seqNum = 0
+  }
+
 
   sealed trait KPrimitive[T] extends KDataType
   case object KInt extends KPrimitive[Int]
@@ -109,12 +147,12 @@ package types {
 
 
   /** Types of a term, a stack function. */
-  case class StackType(consumes: List[KDataType] = Nil,
-                       produces: List[KDataType] = Nil) {
+  case class StackType(consumes: List[KStackTypeItem] = Nil,
+                       produces: List[KStackTypeItem] = Nil) {
 
     override def toString: String = (consumes.mkString(", ") + " -> " + produces.mkString(", ")).trim
 
-    def map(f: KDataType => KDataType): StackType = StackType(
+    def map(f: KStackTypeItem => KStackTypeItem): StackType = StackType(
       consumes = this.consumes.map(f),
       produces = this.produces.map(f),
     )
@@ -143,18 +181,24 @@ package types {
       }.substStackType(st)
   }
 
+
   /** Helper class to perform substitution on terms and types. */
   class TySubst[A <: (KTypeVar | KInferenceVar) => KDataType](private val f: A) {
+
 
     // generalize the parameter fun to apply to all types
     def substDataTy(t: KDataType): KDataType = t match
       case t: KTypeVar => f(t)
       case t: KInferenceVar => f(t)
-      case KFun(st) => KFun(st.map(substDataTy))
+      case KFun(st) => KFun(substStackType(st))
       case KList(item) => KList(substDataTy(item))
       case t: KPrimitive[_] => t
 
-    def substStackType(stackType: StackType): StackType = stackType.map(substDataTy)
+    def substStackType(stackType: StackType): StackType = stackType.map {
+      case a: KInferenceVar => f(a)
+      case a: KTypeVar => f(a)
+      case a => a
+    }
 
     def substTerm(te: TypedExpr): TypedExpr =
       te match
@@ -187,6 +231,7 @@ package types {
 
     private class Ground {
       private[this] val tvGen = KTypeVar.typeVarGenerator()
+      private[this] val rvGen = KRowVar.rowVarGenerator()
 
       val groundImpl: KDataType => KDataType = TySubst {
         case t: KInferenceVar =>
@@ -198,7 +243,9 @@ package types {
         case t => t
       }.substDataTy _
 
-      val groundTerm: TypedExpr => TypedExpr = TySubst(groundImpl).substTerm _
+      val groundTerm: TypedExpr => TypedExpr = new TySubst(groundImpl) {
+        override def substStackType(stackType: StackType): StackType = ???
+      }.substTerm _
     }
 
     /** Replace inference variables with their instantiation.
@@ -206,28 +253,29 @@ package types {
       */
     def ground(te: TypedExpr): TypedExpr = new Ground().groundTerm(te)
 
-    def unify(a: StackType, b: StackType): Boolean =
-      val unifyList: (List[KDataType], List[KDataType]) => Boolean = _.zip(_).forall(unify(_, _))
+    def unify(a: StackType, b: StackType): Option[KittenTypeError] =
+      unify(a.produces, b.produces).orElse(unify(a.consumes, b.consumes))
 
-      unifyList(a.produces, b.produces) && unifyList(a.consumes, b.consumes)
+    def unify(a: List[KStackTypeItem], b: List[KStackTypeItem]): Option[KittenTypeError] = ???
 
-    def unify(a: KDataType, b: KDataType): Boolean =
-      if a == b then true
+
+    def unify(a: KDataType, b: KDataType): Option[KittenTypeError] =
+      if a == b then None
       else
-        def unifyIvar(a: KInferenceVar, b: KDataType): Boolean =
+        def unifyIvar(a: KInferenceVar, b: KDataType): Option[KittenTypeError] =
           if a.instantiation != null then
             return unify(a.instantiation, b)
 
           assert(!b.contains(a))
           a.instantiation = b
-          true
+          None
 
         (a, b) match
           case (x: KInferenceVar, y) => unifyIvar(x, y)
           case (y, x: KInferenceVar) => unifyIvar(x, y)
           case (KFun(st1), KFun(st2)) => unify(st1, st2)
           case (KList(dt1), KList(dt2)) => unify(dt1, dt2)
-          case _ => false
+          case _ => Some(KittenTypeError.mismatch(a, b))
   }
 
   private[types] class TypingScope(private val bindings: BindingTypes, private[types] val ctx: TypingCtx) {
@@ -250,13 +298,13 @@ package types {
         (either, newT) =>
           either.flatMap(leftT => {
             val rightT = scope.ctx.mapToIvars(newT.stackTy)
-            if scope.ctx.unify(leftT, rightT) then Right(leftT)
-            else Left(KittenTypeError.mismatch(leftT, newT.stackTy))
+            scope.ctx.unify(leftT, rightT).toLeft(leftT)
+              .left.map { _ => KittenTypeError.mismatch(leftT, newT.stackTy) }
           })
       }
 
       itemType.flatMap({
-        case StackType(Nil, List(single)) => Right(KList(single))
+        case StackType(Nil, List(single: KDataType)) => Right(KList(single))
         case st => Left(KittenTypeError.cannotBeListItem(st))
       })
 
@@ -283,10 +331,11 @@ package types {
         StackType(consumes = names.map(_ => newTVar()))
       })
       // turn tvars into ivars
-      val typed = TNameTopN(scope.ctx.mapToIvars(genericTy), names)
+      val withIvars = scope.ctx.mapToIvars(genericTy)
+      val ivars = withIvars.consumes.asInstanceOf[List[KInferenceVar]]
       // make bindings whose types are the ivars
-      val newEnv = scope.addBindings(names.zip(typed.stackTy.consumes).toMap)
-      Right((typed, newEnv))
+      val newEnv = scope.addBindings(names.zip(ivars).toMap)
+      Right((TNameTopN(withIvars, names), newEnv))
 
     case FunApply(name) =>
       @tailrec
@@ -310,12 +359,11 @@ package types {
           val (prod, toMatch) = ta.produces.splitAtRight(commonLen)
           val (cons, toMatch2) = tb.consumes.splitAtRight(commonLen)
 
-          val unificationError =
-            toMatch.to(LazyList).zip(toMatch2).collectFirst {
-              case (a, b) if !scope.ctx.unify(a, b) => KittenTypeError.cannotApply(e, ta, tb, a, b)
-            }
+          //            toMatch.to(LazyList).zip(toMatch2).collectFirst {
+          //            case (a, b) if !scope.ctx.unify(a, b) => KittenTypeError.cannotApply(e, ta, tb, a, b)
+          //        }
 
-          unificationError
+          scope.ctx.unify(toMatch, toMatch2)
             .toLeft(StackType(consumes = cons ++ ta.consumes, produces = prod ++ tb.produces))
             .map(st => (TChain(st, leftTree, rightTree).pp(), rightScope))
         }
