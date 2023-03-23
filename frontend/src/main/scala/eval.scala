@@ -19,10 +19,9 @@ package eval {
 
     def showSomethingNice(before: Env, after: Env)(t: TypedStmt): Unit = t match
       case TExprStmt(e) =>
-        println(s"Evaluated expr of type ${e.stackTy}")
         val consumed = before.stack.take(e.stackTy.consumes.length).mkString(", ")
         val produced = after.stack.take(e.stackTy.produces.length).mkString(", ")
-        println(s"$consumed -> $produced")
+        System.err.println(s"$consumed -> $produced")
 
       case TFunDef(name, ty, _) => println(s"Defined function $name: $ty")
       case TBlock(st) => st.foreach(showSomethingNice(before, after)) // todo this does not work! the environments are different

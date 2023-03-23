@@ -91,9 +91,9 @@ package builtins {
     unaryOp("unary~", a => a ^ a),
 
     // These are core function. Also see list of cat builtins: https://github.com/cdiggins/cat-language
-    // TODO apply   : (('S -> 'R) 'S -> 'R)
-    //      compose : (('B -> 'C) ('A -> 'B) 'S -> ('A -> 'C) 'S)
-    //      while   : (('S -> Bool 'R) ('R -> 'S) 'S -> 'S)
+    // TODO apply   : ('S ('S -> 'R) -> 'R)
+    //      compose : ('S ('B -> 'C) ('A -> 'B) -> 'S ('A -> 'C))
+    //      while   : ('S ('S -> 'R bool) ('R -> 'S) -> 'S)
     //  need row type variables
     stackFun("pop", StackType.generic1(tv => StackType(consumes = List(tv))), {
       case _ :: tl => Right(tl)
