@@ -23,6 +23,12 @@ class TypeInfSpec extends AnyFunSuite {
     }
   }
 
+  checkType("1 2 \\swap", "-> int, int, ('a, 'b -> 'b, 'a)")
+  checkType("1 2 \\swap apply", "-> int, int")
+  checkType("\\swap apply", "'a, 'b -> 'b, 'a")
+  checkType("1 swap", "'a -> int, 'a")
+  checkType("1 \\swap apply", "'a -> int, 'a")
+
   checkType("1 2", "-> int, int")
   checkType("1 2 pop", "-> int")
   checkType("{ pop }", "-> ('a ->)")

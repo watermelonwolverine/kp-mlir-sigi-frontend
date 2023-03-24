@@ -216,7 +216,7 @@ package types {
 
 
   /** Helper class to perform substitution on terms and types. */
-  class TySubst[A <: (KTypeVar | KInferenceVar) => KDataType](protected val f: A) {
+  class TySubst(protected val f: (KTypeVar | KInferenceVar) => KDataType) {
 
 
     // generalize the parameter fun to apply to all types
@@ -282,7 +282,7 @@ package types {
       }.substDataTy _
 
 
-      def groundTerm(groundDt: KDataType => KDataType): TypedExpr => TypedExpr = new TySubst(groundDt) {
+      def groundTerm(groundDt: KDataType => KDataType): TySubst = new TySubst(groundDt) {
         def groundList(lst: List[KStackTypeItem]): List[KStackTypeItem] =
           lst.flatMap {
             case rivar: KRowIVar =>
@@ -301,9 +301,9 @@ package types {
             produces = groundList(stackType.produces)
           ).simplify // notice this simplify
 
-      }.substTerm _
+      }
 
-      def groundTerm(te: TypedExpr): TypedExpr = groundTerm(groundImpl)(te)
+      def groundTerm(te: TypedExpr): TypedExpr = groundTerm(groundImpl).substTerm(te)
     }
 
 
@@ -311,7 +311,7 @@ package types {
       * Uninstantiated variables are replaced by fresh type vars.
       */
     def ground(te: TypedExpr): TypedExpr = new Ground().groundTerm(te)
-    def groundRowVars(te: TypedExpr): TypedExpr = new Ground().groundTerm(t => t)(te)
+    def groundRowVars: TySubst = new Ground().groundTerm(t => t)
 
     def unify(a: StackType, b: StackType): Option[KittenTypeError] =
       val ac = mapToIvars(a.canonicalize)
@@ -322,7 +322,7 @@ package types {
       * Unify both lists of types. This adds constraints on the inference variables to make them
       * unifiable.
       */
-    def unify(a: List[KStackTypeItem], b: List[KStackTypeItem]): Option[KittenTypeError] = {
+    def unify(a: List[KStackTypeItem], b: List[KStackTypeItem], matchSuffix: Boolean = false): Option[KittenTypeError] = {
       println(s"unify: $a =:= $b")
 
       def makeAlias(r: KRowIVar, s: KRowIVar, inst: List[KStackTypeItem]): Unit = {
@@ -344,21 +344,24 @@ package types {
               None
           case tyList =>
             if rivar.instantiation == null then
+              println(s"$rivar := $tyList")
               rivar.instantiation = tyList
               None
             else
-              unify(rivar.instantiation, tyList)
+            // the instantiation
+              unify(rivar.instantiation, tyList, matchSuffix)
 
 
       def unifyImpl(aReversed: List[KStackTypeItem], bReversed: List[KStackTypeItem]): Option[KittenTypeError] = {
         (aReversed, bReversed) match
           case ((hd1: KDataType) :: tl1, (hd2: KDataType) :: tl2) => unify(hd1, hd2).orElse(unifyImpl(tl1, tl2))
-          case (List(rv: KRowIVar), lst) => unifyRIvar(rv, lst)
-          case (lst, List(rv: KRowIVar)) => unifyRIvar(rv, lst)
+          case (List(rv: KRowIVar), lst) => unifyRIvar(rv, lst.reverse)
+          case (lst, List(rv: KRowIVar)) => unifyRIvar(rv, lst.reverse)
           case (Nil, Nil) => None
           case _ => Some(KittenTypeError.cannotUnify(aReversed.reverse, bReversed.reverse))
       }
 
+      // We want to match these term to term, starting from the top of the stack (hence the reverse call)
       unifyImpl(a.reverse, b.reverse)
     }
 
@@ -461,13 +464,20 @@ package types {
         newEnv <- {
           val (ta, tb) = (toIvars(leftTree.stackTy.canonicalize), toIvars(rightTree.stackTy.canonicalize))
 
-          val commonLen = math.min(ta.produces.length, tb.consumes.length)
-          val (prod, toMatch) = ta.produces.splitAtRight(commonLen)
-          val (cons, toMatch2) = tb.consumes.splitAtRight(commonLen)
 
-          scope.ctx.unify(toMatch, toMatch2)
-            .toLeft(StackType(consumes = cons ++ ta.consumes, produces = prod ++ tb.produces))
-            .map(st => scope.ctx.groundRowVars(TChain(st, leftTree, rightTree)))
+          scope.ctx.unify(ta.produces, tb.consumes)
+            .toLeft({
+              val ground = scope.ctx.groundRowVars
+              val ta2 = ground.substStackType(ta)
+              val tb2 = ground.substStackType(tb)
+
+              val commonLen = math.min(ta2.produces.length, tb2.consumes.length)
+              val (prod, _) = ta2.produces.splitAtRight(commonLen)
+              val (cons, _) = tb2.consumes.splitAtRight(commonLen)
+
+              StackType(consumes = cons ++ ta2.consumes, produces = prod ++ tb2.produces)
+            })
+            .map(st => TChain(st, leftTree, rightTree))
             .map(term => (term.pp(), rightScope))
         }
       } yield newEnv
