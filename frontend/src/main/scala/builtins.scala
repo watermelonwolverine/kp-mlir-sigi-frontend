@@ -91,10 +91,23 @@ package builtins {
     unaryOp("unary~", a => a ^ a),
 
     // These are core function. Also see list of cat builtins: https://github.com/cdiggins/cat-language
-    // TODO apply   : ('S ('S -> 'R) -> 'R)
+    // TODO apply
     //      compose : ('S ('B -> 'C) ('A -> 'B) -> 'S ('A -> 'C))
     //      while   : ('S ('S -> 'R bool) ('R -> 'S) -> 'S)
     //  need row type variables
+    fun("apply", {
+      // apply   : ('S ('S -> 'R) -> 'R)
+      val row = KRowVar.rowVarGenerator()
+      val S = row()
+      val R = row()
+      StackType(consumes = List(S, KFun(StackType(List(S), List(R)))), produces = List(R))
+    }, t => env => {
+      env.stack match
+        // here we assume the term is well-typed, and so the fun is compatible with the rest of the stack.
+        case VFun(_, _, fundef) :: rest => fundef(env.copy(stack = rest))
+        case _ => Left(KittenEvalError.stackTypeError(t, env))
+    }),
+
     stackFun("pop", StackType.generic1(tv => StackType(consumes = List(tv))), {
       case _ :: tl => Right(tl)
     }),

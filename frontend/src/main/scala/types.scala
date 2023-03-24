@@ -12,7 +12,9 @@ package types {
   import scala.annotation.tailrec
   import scala.collection.mutable
   import scala.util.Right
-  import de.cfaed.kitten.withFilter
+  import de.cfaed.kitten.{types, withFilter}
+
+  import java.util
 
 
   /** Typed tree. */
@@ -58,6 +60,10 @@ package types {
   /** Supertrait for KDataType and KRow[I]Var. */
   sealed trait KStackTypeItem {
 
+    def isRowVarLike: Boolean = this match
+      case _: KRowVar | _: KRowIVar => true
+      case _ => false
+
     override def toString: String = this match
       case KInt => "int"
       case KString => "str"
@@ -69,14 +75,15 @@ package types {
       case riv: KRowIVar => riv.origin.name + riv.id
       case iv: KInferenceVar => iv.origin.name + iv.id
 
-
-    def contains(ivar: KInferenceVar): Boolean = {
+    def exists(f: KStackTypeItem => Boolean): Boolean = {
       this match
-        case a if ivar == a => true
-        case KFun(st) => st.consumes.exists(_.contains(ivar)) || st.produces.exists(_.contains(ivar))
-        case KList(item) => item.contains(ivar)
+        case a if f(a) => true
+        case KFun(st) => st.consumes.exists(_.exists(f)) || st.produces.exists(_.exists(f))
+        case KList(item) => item.exists(f)
         case _ => false
     }
+
+    def contains(ivar: KInferenceVar): Boolean = exists(it => it == ivar)
   }
 
   /** Types of stack values. */
@@ -124,7 +131,8 @@ package types {
     }
   }
   class KRowIVar(val origin: KRowVar) extends KStackTypeItem {
-    var instantiation: List[KDataType] = _
+    var instantiation: List[KStackTypeItem] = _
+    val aliases = mutable.Set[KRowIVar]()
     private[types] val id = {
       val id = KRowIVar.seqNum
       KRowIVar.seqNum += 1
@@ -151,6 +159,31 @@ package types {
                        produces: List[KStackTypeItem] = Nil) {
 
     override def toString: String = (consumes.mkString(", ") + " -> " + produces.mkString(", ")).trim
+
+    def exists(f: KStackTypeItem => Boolean): Boolean =
+      consumes.exists(_.exists(f)) || produces.exists(_.exists(f))
+
+    /** Introduce new trivial row variables if needed.
+      * Turns `a -> b` into `'A, a -> 'A, b` if A and B
+      * do not contain row variables.
+      */
+    def canonicalize: StackType =
+      if this.consumes.exists(_.isRowVarLike) || this.produces.exists(_.isRowVarLike)
+      then this
+      else
+        val rv = KRowVar("'S")
+        StackType(
+          consumes = rv :: this.consumes,
+          produces = rv :: this.produces
+        )
+
+    /** Makes trivial row variables disappear. */
+    def simplify: StackType = this match
+      case StackType((t: KRowVar) :: ctl, (s: KRowVar) :: ptl)
+        // the only occurrence of this var is t and s
+        if t == s && !StackType(ctl, ptl).exists(_ == t) =>
+        StackType(ctl, ptl)
+      case other => other
 
     def map(f: KStackTypeItem => KStackTypeItem): StackType = StackType(
       consumes = this.consumes.map(f),
@@ -183,7 +216,7 @@ package types {
 
 
   /** Helper class to perform substitution on terms and types. */
-  class TySubst[A <: (KTypeVar | KInferenceVar) => KDataType](private val f: A) {
+  class TySubst[A <: (KTypeVar | KInferenceVar) => KDataType](protected val f: A) {
 
 
     // generalize the parameter fun to apply to all types
@@ -192,13 +225,13 @@ package types {
       case t: KInferenceVar => f(t)
       case KFun(st) => KFun(substStackType(st))
       case KList(item) => KList(substDataTy(item))
-      case t: KPrimitive[_] => t
+      case t => t
 
-    def substStackType(stackType: StackType): StackType = stackType.map {
-      case a: KInferenceVar => f(a)
-      case a: KTypeVar => f(a)
+    def substStackType(stackType: StackType): StackType = stackType.map(applyEltWiseSubst)
+
+    protected def applyEltWiseSubst(t: KStackTypeItem): KStackTypeItem = t match
+      case a: KDataType => substDataTy(a)
       case a => a
-    }
 
     def substTerm(te: TypedExpr): TypedExpr =
       te match
@@ -222,9 +255,14 @@ package types {
     /** Replace type vars with fresh inference vars. */
     def mapToIvars(st: StackType): StackType = {
       val toIvars = mutable.Map[KTypeVar, KInferenceVar]()
-      TySubst {
+      val toRivars = mutable.Map[KRowVar, KRowIVar]()
+      new TySubst({
         case t: KTypeVar => toIvars.getOrElseUpdate(t, KInferenceVar(t))
         case t => t
+      }) {
+        override protected def applyEltWiseSubst(t: KStackTypeItem): KStackTypeItem = t match
+          case t: KRowVar => toRivars.getOrElseUpdate(t, KRowIVar(t))
+          case t => super.applyEltWiseSubst(t)
       }.substStackType(st)
     }
 
@@ -233,7 +271,7 @@ package types {
       private[this] val tvGen = KTypeVar.typeVarGenerator()
       private[this] val rvGen = KRowVar.rowVarGenerator()
 
-      val groundImpl: KDataType => KDataType = TySubst {
+      private val groundImpl: KDataType => KDataType = TySubst {
         case t: KInferenceVar =>
           if t.instantiation != null then
             t.instantiation = groundImpl(t.instantiation)
@@ -243,23 +281,90 @@ package types {
         case t => t
       }.substDataTy _
 
-      val groundTerm: TypedExpr => TypedExpr = new TySubst(groundImpl) {
-        override def substStackType(stackType: StackType): StackType = ???
+
+      def groundTerm(groundDt: KDataType => KDataType): TypedExpr => TypedExpr = new TySubst(groundDt) {
+        def groundList(lst: List[KStackTypeItem]): List[KStackTypeItem] =
+          lst.flatMap {
+            case rivar: KRowIVar =>
+              rivar.instantiation =
+                if rivar.instantiation != null
+                then groundList(rivar.instantiation)
+                else
+                  val aliasedInst = rivar.aliases.find(_.instantiation != null).map(_.instantiation)
+                  aliasedInst.getOrElse(List(rvGen()))
+              rivar.instantiation
+            case t => List(applyEltWiseSubst(t))
+          }
+        override def substStackType(stackType: StackType): StackType =
+          StackType(
+            consumes = groundList(stackType.consumes),
+            produces = groundList(stackType.produces)
+          ).simplify // notice this simplify
+
       }.substTerm _
+
+      def groundTerm(te: TypedExpr): TypedExpr = groundTerm(groundImpl)(te)
     }
+
 
     /** Replace inference variables with their instantiation.
       * Uninstantiated variables are replaced by fresh type vars.
       */
     def ground(te: TypedExpr): TypedExpr = new Ground().groundTerm(te)
+    def groundRowVars(te: TypedExpr): TypedExpr = new Ground().groundTerm(t => t)(te)
 
     def unify(a: StackType, b: StackType): Option[KittenTypeError] =
-      unify(a.produces, b.produces).orElse(unify(a.consumes, b.consumes))
+      val ac = mapToIvars(a.canonicalize)
+      val bc = mapToIvars(b.canonicalize)
+      unify(ac.produces, bc.produces).orElse(unify(ac.consumes, bc.consumes))
 
-    def unify(a: List[KStackTypeItem], b: List[KStackTypeItem]): Option[KittenTypeError] = ???
+    /**
+      * Unify both lists of types. This adds constraints on the inference variables to make them
+      * unifiable.
+      */
+    def unify(a: List[KStackTypeItem], b: List[KStackTypeItem]): Option[KittenTypeError] = {
+      println(s"unify: $a =:= $b")
+
+      def makeAlias(r: KRowIVar, s: KRowIVar, inst: List[KStackTypeItem]): Unit = {
+        r.aliases += s
+        s.aliases += r
+        r.instantiation = inst
+        s.instantiation = inst
+      }
+
+      def unifyRIvar(rivar: KRowIVar, lst: List[KStackTypeItem]): Option[KittenTypeError] =
+        lst match
+          case List(k: KRowIVar) =>
+            if k == rivar then None
+            else if (k.instantiation != null && rivar.instantiation != null)
+              unify(rivar.instantiation, k.instantiation)
+            else
+              val inst = Option(k.instantiation).getOrElse(rivar.instantiation)
+              makeAlias(rivar, k, inst)
+              None
+          case tyList =>
+            if rivar.instantiation == null then
+              rivar.instantiation = tyList
+              None
+            else
+              unify(rivar.instantiation, tyList)
+
+
+      def unifyImpl(aReversed: List[KStackTypeItem], bReversed: List[KStackTypeItem]): Option[KittenTypeError] = {
+        (aReversed, bReversed) match
+          case ((hd1: KDataType) :: tl1, (hd2: KDataType) :: tl2) => unify(hd1, hd2).orElse(unifyImpl(tl1, tl2))
+          case (List(rv: KRowIVar), lst) => unifyRIvar(rv, lst)
+          case (lst, List(rv: KRowIVar)) => unifyRIvar(rv, lst)
+          case (Nil, Nil) => None
+          case _ => Some(KittenTypeError.cannotUnify(aReversed.reverse, bReversed.reverse))
+      }
+
+      unifyImpl(a.reverse, b.reverse)
+    }
 
 
     def unify(a: KDataType, b: KDataType): Option[KittenTypeError] =
+      println(s"unify: $a =:= $b")
       if a == b then None
       else
         def unifyIvar(a: KInferenceVar, b: KDataType): Option[KittenTypeError] =
@@ -267,6 +372,7 @@ package types {
             return unify(a.instantiation, b)
 
           assert(!b.contains(a))
+          println(s"$a := $b")
           a.instantiation = b
           None
 
@@ -353,19 +459,16 @@ package types {
         (leftTree, leftScope) <- assignTypeRec(scope)(left)
         (rightTree, rightScope) <- assignTypeRec(leftScope)(right)
         newEnv <- {
-          val (ta, tb) = (toIvars(leftTree.stackTy), toIvars(rightTree.stackTy))
+          val (ta, tb) = (toIvars(leftTree.stackTy.canonicalize), toIvars(rightTree.stackTy.canonicalize))
 
           val commonLen = math.min(ta.produces.length, tb.consumes.length)
           val (prod, toMatch) = ta.produces.splitAtRight(commonLen)
           val (cons, toMatch2) = tb.consumes.splitAtRight(commonLen)
 
-          //            toMatch.to(LazyList).zip(toMatch2).collectFirst {
-          //            case (a, b) if !scope.ctx.unify(a, b) => KittenTypeError.cannotApply(e, ta, tb, a, b)
-          //        }
-
           scope.ctx.unify(toMatch, toMatch2)
             .toLeft(StackType(consumes = cons ++ ta.consumes, produces = prod ++ tb.produces))
-            .map(st => (TChain(st, leftTree, rightTree).pp(), rightScope))
+            .map(st => scope.ctx.groundRowVars(TChain(st, leftTree, rightTree)))
+            .map(term => (term.pp(), rightScope))
         }
       } yield newEnv
 

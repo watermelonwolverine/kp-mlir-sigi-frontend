@@ -31,6 +31,10 @@ object KittenTypeError {
     s"Mismatched types: $a is not compatible with $b"
   )
   
+  def cannotUnify(a: List[KStackTypeItem], b: List[KStackTypeItem]) = KittenTypeError(
+    s"Mismatched types: $a is not compatible with $b"
+  )
+
   def cannotBeListItem(t1: StackType): KittenTypeError = KittenTypeError(
     s"Type cannot be a list item: $t1 (quote expression to box it)"
   )
