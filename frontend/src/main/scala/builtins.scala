@@ -67,7 +67,7 @@ package builtins {
         Right(stack)
     }),
     fun("env", StackType(), _ => env => {
-      println(s"stack: ${env.stackToString}")
+      println(s"stack (top is right): ${env.stackToString}")
       println(s"env: ${env.varsToString}")
       Right(env)
     }),

@@ -19,9 +19,9 @@ package eval {
 
     def showSomethingNice(before: Env, after: Env)(t: TypedStmt): Unit = t match
       case TExprStmt(e) =>
-        val consumed = before.stack.take(e.stackTy.consumes.length).mkString(", ")
-        val produced = after.stack.take(e.stackTy.produces.length).mkString(", ")
-        System.err.println(s"$consumed -> $produced")
+      // val consumed = before.stack.take(e.stackTy.consumes.length).reverseIterator.mkString(", ")
+      // val produced = after.stack.take(e.stackTy.produces.length).reverseIterator.mkString(", ")
+      // println(s"$consumed -> $produced")
 
       case TFunDef(name, ty, _) => println(s"Defined function $name: $ty")
       case TBlock(st) => st.foreach(showSomethingNice(before, after)) // todo this does not work! the environments are different
@@ -137,7 +137,7 @@ package eval {
 
     def push(v: KValue): Env = Env(vars, v :: stack, typesInScope)
 
-    def stackToString: String = stack.mkString("[", " :: ", "]")
+    def stackToString: String = stack.reverse.mkString("[", ", ", "]")
     def varsToString: String = (vars -- Env.Default.vars.keys).map { case (k, v) => s"$k: $v" }.mkString("{", ", ", "}")
     def bindingTypes: types.BindingTypes = vars.map((k, v) => (k, v.dataType))
 

@@ -130,19 +130,17 @@ package ast {
         case None ~ e => e
       }
 
-    private def multexpr: Parser[KExpr] =
-      unary ~ rep((OP("*") | OP("/") | OP("%")) ~ unary) ^^ {
+    private def makeBinary(lowerPrecParser: Parser[KExpr],
+                           opParser: Parser[KToken]): Parser[KExpr] =
+      lowerPrecParser ~ rep(opParser ~ lowerPrecParser) ^^ {
         case e1 ~ list => list.foldLeft(e1) {
           case (a, OP(op) ~ b) => Chain(Chain(a, b), FunApply(op))
         }
       }
 
-    private def addexpr: Parser[KExpr] =
-      multexpr ~ rep((OP("+") | OP("-")) ~ multexpr) ^^ {
-        case e1 ~ list => list.foldLeft(e1) {
-          case (a, OP(op) ~ b) => Chain(Chain(a, b), FunApply(op))
-        }
-      }
+    private def multexpr: Parser[KExpr] = makeBinary(unary, OP("*") | OP("/") | OP("%"))
+
+    private def addexpr: Parser[KExpr] = makeBinary(multexpr, OP("+") | OP("-"))
 
 
     private def sequenceableExpr: Parser[KExpr] =

@@ -323,7 +323,7 @@ package types {
       * unifiable.
       */
     def unify(a: List[KStackTypeItem], b: List[KStackTypeItem], matchSuffix: Boolean = false): Option[KittenTypeError] = {
-      println(s"unify: $a =:= $b")
+      // println(s"unify: $a =:= $b")
 
       def makeAlias(r: KRowIVar, s: KRowIVar, inst: List[KStackTypeItem]): Unit = {
         r.aliases += s
@@ -344,7 +344,7 @@ package types {
               None
           case tyList =>
             if rivar.instantiation == null then
-              println(s"$rivar := $tyList")
+              // println(s"$rivar := $tyList")
               rivar.instantiation = tyList
               None
             else
@@ -367,7 +367,7 @@ package types {
 
 
     def unify(a: KDataType, b: KDataType): Option[KittenTypeError] =
-      println(s"unify: $a =:= $b")
+      // println(s"unify: $a =:= $b")
       if a == b then None
       else
         def unifyIvar(a: KInferenceVar, b: KDataType): Option[KittenTypeError] =
@@ -375,7 +375,7 @@ package types {
             return unify(a.instantiation, b)
 
           assert(!b.contains(a))
-          println(s"$a := $b")
+          // println(s"$a := $b")
           a.instantiation = b
           None
 
@@ -478,7 +478,7 @@ package types {
               StackType(consumes = cons ++ ta2.consumes, produces = prod ++ tb2.produces)
             })
             .map(st => TChain(st, leftTree, rightTree))
-            .map(term => (term.pp(), rightScope))
+            .map(term => (term, rightScope))
         }
       } yield newEnv
 
