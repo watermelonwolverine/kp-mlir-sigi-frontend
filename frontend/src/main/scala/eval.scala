@@ -1,8 +1,6 @@
 package de.cfaed.kitten
 
 
-import java.util.Scanner
-
 package eval {
 
   import ast.*
@@ -15,7 +13,7 @@ package eval {
 
   @main
   def repl(): Unit = {
-    val scanner = Scanner(System.in)
+    val scanner = scala.io.StdIn
 
     def showSomethingNice(before: Env, after: Env)(t: TypedStmt): Unit = t match
       case TExprStmt(e) =>
@@ -46,11 +44,11 @@ package eval {
           env
 
       print("> ")
-      doRepl(scanner.nextLine(), newEnv)
+      doRepl(scanner.readLine(), newEnv)
     }
 
     print("> ")
-    doRepl(scanner.nextLine(), Env.Default.copy(vars = Env.Default.vars ++ builtins.ReplBuiltins))
+    doRepl(scanner.readLine(), Env.Default.copy(vars = Env.Default.vars ++ builtins.ReplBuiltins))
   }
 
 

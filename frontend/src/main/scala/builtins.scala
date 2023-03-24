@@ -129,15 +129,14 @@ package builtins {
         Right((if condition then thenV else elseV) :: tl)
     }),
 
-    // if:   bool, (-> 'a), (-> 'a) -> 'a
-    // todo this is basically `cond apply` in terms of Cat builtins
-    fun(Intrinsic_if, StackType.generic1(tv => {
-      val thunkT = KFun(StackType.pushOne(tv))
-      StackType(
-        consumes = List(types.KBool, thunkT, thunkT),
-        produces = List(tv)
-      )
-    }), t => env => {
+    // if:   'A, bool, ('A -> 'B), ('A -> 'B) -> 'B
+    fun(Intrinsic_if, {
+      val row = KRowVar.rowVarGenerator()
+      val A = row()
+      val B = row()
+      val thunkT = StackType(List(A), List(B))
+      StackType(consumes = List(A, KBool, KFun(thunkT), KFun(thunkT)), produces = List(B))
+    }, t => env => {
       env.stack match
         case VFun(_, _, elseDef) :: VFun(_, _, thenDef) :: VPrimitive(types.KBool, condition) :: tl =>
           val newEnv = env.copy(stack = tl)
