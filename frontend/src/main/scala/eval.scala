@@ -150,18 +150,16 @@ package eval {
     value match
       case value@VPrimitive(_, _) => Right(env.push(value))
       case value@VList(_, _) => Right(env.push(value))
-      case VFun(_, t, definition) =>
-        if (env.stack.lengthCompare(t.consumes.length) < 0)
-          Left(KittenEvalError.stackTypeError(t, env))
-        else
-          definition(env)
-            // Remove bindings created by the function call from the environment.
-            // Just keep the stack.
-            // todo scoping:
-            //  what is a block in the source,
-            //  should we use that as the scope delimiter,
-            //  should functions use one as body
-            .map(e => env.copy(stack = e.stack))
+      case VFun(_, _, definition) =>
+        // the evaluation performs its own type checking
+        definition(env)
+          // Remove bindings created by the function call from the environment.
+          // Just keep the stack.
+          // todo scoping:
+          //  what is a block in the source,
+          //  should we use that as the scope delimiter,
+          //  should functions use one as body
+          .map(e => env.copy(stack = e.stack))
 
   def eval(stmt: TypedStmt)(env: Env): EvalResult = stmt match
     case TBlock(stmts) =>
