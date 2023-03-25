@@ -97,7 +97,7 @@ package repl {
 
     def stackToString: String = stack.reverse.mkString("[", ", ", "]")
     def varsToString: String = (vars -- Env.Default.vars.keys).map { case (k, v) => s"$k: $v" }.mkString("{", ", ", "}")
-    def bindingTypes: types.BindingTypes = vars.map((k, v) => (k, v.dataType))
+    private def bindingTypes: types.BindingTypes = vars.map((k, v) => (k, v.dataType))
 
     export typesInScope.get as getType
     
