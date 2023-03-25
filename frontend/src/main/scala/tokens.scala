@@ -93,7 +93,7 @@ package tokens {
     override def token: SigiLexer.Parser[SigiLexer.Token] =
       positioned(keyword | ident | number | punct | op | string | tvar)
 
-    override def whitespace: SigiLexer.Parser[Any] = "\\s*".r
+    override def whitespace: SigiLexer.Parser[Any] = "\\s*+(#.*\\R)?".r
 
     override def errorToken(msg: String): KToken = ERROR(msg)
   }

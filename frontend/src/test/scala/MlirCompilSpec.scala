@@ -18,7 +18,7 @@ class MlirCompilSpec extends AnyFunSuite {
     test(s"$fileName.sigi") {
 
       val source = classOf[MlirCompilSpec].getResourceAsStream(s"mlirTests/$fileName.sigi")
-      val expected = classOf[MlirCompilSpec].getResourceAsStream(s"mlirTests/$fileName.text")
+      val expected = classOf[MlirCompilSpec].getResourceAsStream(s"mlirTests/$fileName.txt")
 
       assert(source != null)
       assert(expected != null)
@@ -26,7 +26,7 @@ class MlirCompilSpec extends AnyFunSuite {
 
       dumpmlir.doDumpMlir(PrintStream(out))(io.Source.fromInputStream(source))
 
-      assertResult(io.Source.fromInputStream(expected).mkString("\n"))(out.toString())
+      assertResult(io.Source.fromInputStream(expected).mkString)(out.toString())
     }
   }
 
