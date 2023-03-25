@@ -26,7 +26,7 @@ package types {
   case class TBlock(stmts: List[TypedStmt]) extends TypedStmt
   case class TModule(
                       functions: Map[String, TFunDef],
-                      code: List[TypedExpr]
+                      mainExpr: TypedExpr
                     )
 
   sealed trait TypedExpr extends TypedTree {
@@ -444,14 +444,21 @@ package types {
       })
 
   def typeFile(env: TypingScope)(file: KFile): Either[KittenTypeError, TModule] = {
-    doValidation(env)(file.block).map {
-      case TBlock(stmts) =>
-        val typedFuns: Map[String, TFunDef] = stmts.collect { case fun@TFunDef(name, _, _) => (name, fun) }.toMap
-        val exprs = stmts.collect { case TExprStmt(e) => e }
-        TModule(functions = typedFuns, code = exprs)
+    doValidation(env)(KBlock(file.funs)).flatMap {
+      case TBlock(funs) =>
+        val typedFuns: Map[String, TFunDef] = funs.collect { case fun@TFunDef(name, _, _) => (name, fun) }.toMap
+        val fileEnv = env.addBindings(typedFuns.map { case (name, fun) => (name, KFun(fun.ty)) })
+        // todo make sure expr has proper stack type (consumes nothing)
+        doValidation(fileEnv)(KExprStatement(file.mainExpr))
+          .flatMap { case TExprStmt(te) => checkTypeConforms(StackType())(te).toLeft(te) }
+          .map(te => TModule(functions = typedFuns, mainExpr = te))
     }
   }
 
+  def checkTypeConforms(expectedTy: StackType)(term: TypedExpr): Option[KittenTypeError] =
+    if term.stackTy != expectedTy
+    then Some(KittenTypeError.mismatch(expectedTy, term.stackTy))
+    else None
 
   def resolveType(env: TypingScope)(t: TypeSpec): Either[KittenTypeError, KDataType] = t match
     case TypeCtor(name, tyargs) => env.resolveType(name).flatMap {

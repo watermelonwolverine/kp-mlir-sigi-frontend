@@ -24,7 +24,7 @@ package ast {
 
   // todo positioning, error messages are shit
 
-  case class KFile(block: KBlock)
+  case class KFile(funs: List[KFunDef], mainExpr: KExpr)
 
 
   sealed trait KStatement extends KNode
@@ -157,6 +157,9 @@ package ast {
     private def expr: Parser[KExpr] = exprSeq
     private def statement: Parser[KStatement] = funDef | expr <~ PHAT_SEMI.? ^^ KExprStatement.apply
     private def statementList: Parser[KBlock] = rep(statement) ^^ KBlock.apply
+    private def file: Parser[KFile] = rep(funDef) ~ expr ^^ {
+      case (funs: List[KFunDef]) ~ (expr: KExpr) => KFile(funs, expr)
+    }
 
     def apply(source: String): Either[KittenParseError, KExpr] = apply(source, expr)
 
@@ -174,6 +177,9 @@ package ast {
       case KBlock(stmts) => stmts.foldLeft[Option[KittenParseError]](None)((a, b) => a.orElse(validate(b)))
       case KFunDef(_, _, body) => validate(body)
       case KExprStatement(e) => validate(e)
+
+    private def validate(file: KFile): List[KittenParseError] =
+      (file.funs.map(validate) ++ List(validate(file.mainExpr))).collect { case Some(err) => err }
 
     private def validate(e: KExpr): Option[KittenParseError] = e match
       case Chain(a, b) => validate(a).orElse(validate(b))
@@ -195,7 +201,12 @@ package ast {
     }
 
     def parseFile(fileContents: Source): Either[KittenCompilationError, KFile] = {
-      KittenParser(fileContents.mkString("\n"), statementList).flatMap(e => validate(e).toLeft(KFile(e)))
+      KittenParser(fileContents.mkString("\n"), file).flatMap(file => {
+        val errors = validate(file)
+        if errors.isEmpty
+        then Right(file)
+        else Left(KittenCompilationError.allOf(errors))
+      })
     }
 
 

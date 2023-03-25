@@ -7,7 +7,11 @@ import types.*
 
 trait KittenError
 trait KittenCompilationError extends KittenError
+object KittenCompilationError {
+  export ListOfErrors.apply as allOf
+}
 
+case class ListOfErrors(lst: List[KittenCompilationError]) extends KittenCompilationError
 case class KittenParseError(msg: String) extends KittenCompilationError
 
 object KittenParseError {

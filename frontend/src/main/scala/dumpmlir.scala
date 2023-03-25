@@ -186,11 +186,8 @@ package dumpmlir {
       new MlirBuilder(out).dumpFunction(fun)
     }
 
-    t.code match
-      case hd :: _ =>
-        val mainFun = TFunDef("__main__", StackType(), hd)
-        new MlirBuilder(out).dumpFunction(mainFun)
-      case Nil =>
+    val mainFun = TFunDef("__main__", StackType(), t.mainExpr)
+    new MlirBuilder(out).dumpFunction(mainFun)
   }
 
   def doDumpMlir(out: PrintStream)(in: Source): Unit = {
