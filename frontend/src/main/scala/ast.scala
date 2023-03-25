@@ -100,9 +100,9 @@ package ast {
     private def identAsFunApply = id ^^ { id => FunApply(id.name).setPos(id.pos) }
 
     private def ifelse: Parser[KExpr] =
-      (IF ~> parexpr.? ~ thunk
-        ~ rep(ELIF ~> parexpr ~ thunk)
-        ~ (ELSE ~> thunk)
+      (IF ~> parexpr.? ~ (exprSeq ^^ Quote.apply)
+        ~ rep(ELIF ~> parexpr ~ (exprSeq ^^ Quote.apply))
+        ~ (ELSE ~> exprSeq ^^ Quote.apply)
         ) ^^ {
         case (cond: Option[KExpr]) ~ (thenThunk: Quote) ~ (elifs: List[KExpr ~ Quote]) ~ (elseThunk: Quote) =>
           def makeIf(thenThunk: Quote, elseThunk: Quote): KExpr =
@@ -148,7 +148,7 @@ package ast {
 
     private def addexpr: Parser[KExpr] = makeBinary(multexpr, OP("+") | OP("-"))
 
-    private def compexpr: Parser[KExpr] = makeBinary(addexpr, OP("<") | OP(">") | OP("<=") | OP(">=") | OP("==") | OP("!="))
+    private def compexpr: Parser[KExpr] = makeBinary(addexpr, OP("<") | OP(">") | OP("<=") | OP(">=") | OP("=") | OP("<>"))
 
     private def sequenceableExpr: Parser[KExpr] =
       compexpr

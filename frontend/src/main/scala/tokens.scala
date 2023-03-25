@@ -52,7 +52,7 @@ package tokens {
 
     def ident: Parser[ID] = """[a-zA-Z]\w*""".r ^^ ID.apply
     def tvar: Parser[TVAR] = """'[a-z][a-z0-9]*""".r ^^ TVAR.apply
-    def op: Parser[OP] = "[-+*/%]|==|<>".r ^^ OP.apply
+    def op: Parser[OP] = "[-+*/%]|[<>]=?|=|<>".r ^^ OP.apply
     def number: Parser[NUMBER] = """(0|[1-9]\d*)""".r ^^ { a => NUMBER(a.toInt) }
     def string: Parser[STRING] =
       """"([^\\"]*+|\\[\\rn"])*"""".r ^^ {
@@ -78,6 +78,7 @@ package tokens {
     | ";;" ^^^ PHAT_SEMI
     | ";" ^^^ SEMI
     | "," ^^^ COMMA
+    | "[<>]=".r ^^ OP.apply
     | "<" ^^^ LANGLE
     | ">" ^^^ RANGLE
     | "\\" ^^^ BACKSLASH

@@ -240,8 +240,8 @@ package dumpmlir {
       "<" -> "arith.cmpi \"slt\",",
       ">" -> "arith.cmpi \"sgt\",",
 
-      "==" -> "arith.cmpi \"eq\",",
-      "!=" -> "arith.cmpi \"ne\",",
+      "=" -> "arith.cmpi \"eq\",",
+      "<>" -> "arith.cmpi \"ne\",",
     )
 
   }
