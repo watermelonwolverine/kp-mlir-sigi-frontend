@@ -1,4 +1,4 @@
-package de.cfaed.kitten
+package de.cfaed.sigi
 
 /**
   * @author Clément Fournier &lt;clement.fournier@tu-dresden.de&gt;
@@ -18,9 +18,9 @@ package builtins {
             val res = definition(a, b)
             Right(env.copy(stack = VNum(res) :: tail))
           } catch {
-            case e: Exception => Left(KittenEvalError(s"Error executing op $name: ${e.getMessage}"))
+            case e: Exception => Left(SigiEvalError(s"Error executing op $name: ${e.getMessage}"))
           }
-        case _ => Left(KittenEvalError.stackTypeError(t, env))
+        case _ => Left(SigiEvalError.stackTypeError(t, env))
     })
   }
 
@@ -32,18 +32,18 @@ package builtins {
             val res = definition(a)
             Right(env.copy(stack = VNum(res) :: tail))
           } catch {
-            case e: Exception => Left(KittenEvalError(s"Error executing op $name: ${e.getMessage}"))
+            case e: Exception => Left(SigiEvalError(s"Error executing op $name: ${e.getMessage}"))
           }
-        case _ => Left(KittenEvalError.stackTypeError(t, env))
+        case _ => Left(SigiEvalError.stackTypeError(t, env))
     })
   }
 
   private def fun(name: String, stackType: StackType, definition: StackType => Env => EvalResult): (String, VFun) = {
     (name, VFun(Some(name), stackType, definition(stackType)))
   }
-  private def stackFun(name: String, stackType: StackType, definition: PartialFunction[List[KValue], Either[KittenEvalError, List[KValue]]]): (String, VFun) = {
+  private def stackFun(name: String, stackType: StackType, definition: PartialFunction[List[KValue], Either[SigiEvalError, List[KValue]]]): (String, VFun) = {
     (name, VFun(Some(name), stackType, env => {
-      definition.applyOrElse(env.stack, _ => Left(KittenEvalError.stackTypeError(stackType, env)))
+      definition.applyOrElse(env.stack, _ => Left(SigiEvalError.stackTypeError(stackType, env)))
         .map(e => env.copy(stack = e))
     }))
   }
@@ -105,7 +105,7 @@ package builtins {
       env.stack match
         // here we assume the term is well-typed, and so the fun is compatible with the rest of the stack.
         case VFun(_, _, fundef) :: rest => fundef(env.copy(stack = rest))
-        case _ => Left(KittenEvalError.stackTypeError(t, env))
+        case _ => Left(SigiEvalError.stackTypeError(t, env))
     }),
 
     stackFun("pop", StackType.generic1(tv => StackType(consumes = List(tv))), {
@@ -141,7 +141,7 @@ package builtins {
         case VFun(_, _, elseDef) :: VFun(_, _, thenDef) :: VPrimitive(types.KBool, condition) :: tl =>
           val newEnv = env.copy(stack = tl)
           if (condition) thenDef(newEnv) else elseDef(newEnv)
-        case _ => Left(KittenEvalError.stackTypeError(t, env))
+        case _ => Left(SigiEvalError.stackTypeError(t, env))
     }),
   )
 }

@@ -1,4 +1,4 @@
-package de.cfaed.kitten
+package de.cfaed.sigi
 
 
 import scala.annotation.tailrec
@@ -43,7 +43,7 @@ package tokens {
   case class ERROR(msg: String) extends KToken
 
 
-  object KittenLexer extends RegexParsers with Scanners {
+  object SigiLexer extends RegexParsers with Scanners {
     override def skipWhitespace: Boolean = true
 
     override type Token = KToken
@@ -87,13 +87,13 @@ package tokens {
         | "false" ^^^ FALSE
         | "define" ^^^ DEFINE
 
-    override def token: KittenLexer.Parser[KittenLexer.Token] =
+    override def token: SigiLexer.Parser[SigiLexer.Token] =
       keyword | ident | number | punct | op | string 
 
-    override def whitespace: KittenLexer.Parser[Any] = "\\s*".r
+    override def whitespace: SigiLexer.Parser[Any] = "\\s*".r
 
     override def errorToken(msg: String): KToken = ERROR(msg)
   }
 
-  class KTokenScanner(in: String) extends KittenLexer.Scanner(CharSequenceReader(in))
+  class KTokenScanner(in: String) extends SigiLexer.Scanner(CharSequenceReader(in))
 }

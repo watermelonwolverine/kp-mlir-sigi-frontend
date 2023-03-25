@@ -1,4 +1,4 @@
-package de.cfaed.kitten
+package de.cfaed.sigi
 
 import scala.collection.mutable.ListBuffer
 

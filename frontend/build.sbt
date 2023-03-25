@@ -8,7 +8,7 @@ ThisBuild / scalaVersion := "3.1.1"
 lazy val root = (project in file("."))
   .settings(
     name := "frontend",
-    idePackagePrefix := Some("de.cfaed.kitten")
+    idePackagePrefix := Some("de.cfaed.sigi")
   )
 
 libraryDependencies += "org.scala-lang.modules" %% "scala-parser-combinators" % "2.1.1"

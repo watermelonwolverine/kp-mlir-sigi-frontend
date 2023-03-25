@@ -1,4 +1,4 @@
-package de.cfaed.kitten
+package de.cfaed.sigi
 
 import eval.Env
 import types.*
@@ -14,8 +14,8 @@ class TypeInfSpec extends AnyFunSuite {
   inline def checkType(term: String, ty: String): Unit = {
     test(s"$term should have type $ty") {
 
-      val result: Either[KittenError, StackType] = for {
-        parsed <- ast.KittenParser.parseExpr(term)
+      val result: Either[SigiError, StackType] = for {
+        parsed <- ast.SigiParser.parseExpr(term)
         typed <- types.assignType(Env.Default.toTypingScope)(parsed)
       } yield typed.stackTy
 

@@ -1,4 +1,4 @@
-package de.cfaed.kitten
+package de.cfaed.sigi
 
 /**
   * @author Clément Fournier &lt;clement.fournier@tu-dresden.de&gt;

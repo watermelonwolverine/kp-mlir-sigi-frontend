@@ -1,4 +1,4 @@
-package de.cfaed.kitten
+package de.cfaed.sigi
 
 import ast.*
 import eval.Env
@@ -16,13 +16,13 @@ class ParserSpec extends AnyFunSuite with Matchers {
 
   inline def checkExpr(term: String, tree: KExpr): Unit = {
     test(term) {
-      assertResult(Right(tree))(ast.KittenParser.parseExpr(term))
+      assertResult(Right(tree))(ast.SigiParser.parseExpr(term))
     }
   }
 
   inline def checkTreeMatches(term: String)(tree: PartialFunction[Any, Unit]): Unit = {
     test(term) {
-      ast.KittenParser.parseStmt(term).right.get should matchPattern(tree)
+      ast.SigiParser.parseStmt(term).right.get should matchPattern(tree)
     }
   }
 

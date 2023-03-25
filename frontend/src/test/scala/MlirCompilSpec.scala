@@ -1,9 +1,9 @@
-package de.cfaed.kitten
+package de.cfaed.sigi
 
 import eval.Env
 import types.*
 
-import de.cfaed.kitten.ast.KFile
+import de.cfaed.sigi.ast.KFile
 import org.scalatest.funsuite.AnyFunSuite
 
 import java.io.{ByteArrayOutputStream, PrintStream}

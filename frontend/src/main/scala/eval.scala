@@ -1,4 +1,4 @@
-package de.cfaed.kitten
+package de.cfaed.sigi
 
 
 package eval {
@@ -28,8 +28,8 @@ package eval {
     def doRepl(line: String, env: Env): Unit = {
       if (line == "exit") return
 
-      val result: Either[KittenError, Env] = for {
-        parsed <- KittenParser.parseStmt(line)
+      val result: Either[SigiError, Env] = for {
+        parsed <- SigiParser.parseStmt(line)
         typed <- doValidation(env.toTypingScope)(parsed)
         env2 <- eval(typed)(env)
       } yield {
@@ -53,7 +53,7 @@ package eval {
 
 
 
-  type EvalResult = Either[KittenEvalError, Env]
+  type EvalResult = Either[SigiEvalError, Env]
 
   sealed trait KValue {
     override def toString: String = this match
@@ -88,7 +88,7 @@ package eval {
   case class Env(vars: Map[String, KValue],
                  stack: List[KValue],
                  typesInScope: Map[String, datamodel.TypeDescriptor]) {
-    def apply(name: String): Either[KittenEvalError, KValue] = vars.get(name).toRight(KittenEvalError.undef(name))
+    def apply(name: String): Either[SigiEvalError, KValue] = vars.get(name).toRight(SigiEvalError.undef(name))
 
     def push(v: KValue): Env = Env(vars, v :: stack, typesInScope)
 
@@ -138,7 +138,7 @@ package eval {
       eval(TBlock(items.map(TExprStmt.apply)))(env).flatMap(env => {
         val newItems = env.stack.length - stackLen
         if newItems != items.length then
-          Left(KittenEvalError(s"Problem building list, expected ${items.length} new items on stack, got $newItems. This should have been caught by the type checker."))
+          Left(SigiEvalError(s"Problem building list, expected ${items.length} new items on stack, got $newItems. This should have been caught by the type checker."))
         else
           val (listItems, stackRest) = env.stack.splitAt(newItems)
           Right(env.copy(stack = VList(ty, listItems.reverse) :: stackRest))
@@ -149,7 +149,7 @@ package eval {
     case node@TNameTopN(_, names) =>
       val (topOfStack, stackTail) = env.stack.splitAt(names.length)
       if topOfStack.lengthCompare(names.length) != 0 then
-        Left(KittenEvalError.stackTypeError(node.stackTy, env))
+        Left(SigiEvalError.stackTypeError(node.stackTy, env))
       else
         Right(env.copy(
           vars = env.vars ++ names.zip(topOfStack.reverseIterator),

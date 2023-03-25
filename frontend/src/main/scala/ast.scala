@@ -1,6 +1,6 @@
 
 
-package de.cfaed.kitten
+package de.cfaed.sigi
 
 import scala.annotation.tailrec
 import scala.util.matching.Regex
@@ -13,7 +13,7 @@ package ast {
   import tokens.*
   import types.{KDataType, KFun, KPrimitive, StackType}
 
-  import de.cfaed.kitten.tokens
+  import de.cfaed.sigi.tokens
 
   import scala.io.Source
 
@@ -63,7 +63,7 @@ package ast {
   }
 
 
-  object KittenParser extends Parsers with PackratParsers {
+  object SigiParser extends Parsers with PackratParsers {
     override type Elem = KToken
 
     private def thunk =
@@ -73,7 +73,7 @@ package ast {
       id ~ tyArgs.? ^^ { case name ~ tyargs => TypeCtor(name, tyargs.getOrElse(Nil)) }
         | LPAREN ~> funTy <~ RPAREN // funtype
 
-    // note that the normal kitten grammar uses angle brackets
+    // note that the normal sigi grammar uses angle brackets
     // todo maybe use OCaml postfix syntax for type ctors
     //  although maybe using familiar looking generic types makes it look more familiar.
     // todo maybe remove type param clauses, they can be defined implicitly
@@ -88,7 +88,7 @@ package ast {
     private def inParens[P](p: Parser[P]): Parser[P] = LPAREN ~> p <~ RPAREN
 
     private def funDef: Parser[KFunDef] =
-    // note that the normal kitten grammar does not use a semi
+    // note that the normal sigi grammar does not use a semi
       DEFINE ~> id ~ inParens(funTy) ~ COLON ~ exprSeq <~ PHAT_SEMI ^^ {
         case name ~ ty ~ _ ~ body => KFunDef(name, ty, body)
       }
@@ -161,51 +161,51 @@ package ast {
       case (funs: List[KFunDef]) ~ (expr: KExpr) => KFile(funs, expr)
     }
 
-    def apply(source: String): Either[KittenParseError, KExpr] = apply(source, expr)
+    def apply(source: String): Either[SigiParseError, KExpr] = apply(source, expr)
 
-    def apply[T](source: String, parser: Parser[T]): Either[KittenParseError, T] = {
+    def apply[T](source: String, parser: Parser[T]): Either[SigiParseError, T] = {
       val reader = new KTokenScanner(source)
       parser(reader) match {
-        case NoSuccess(msg, _) => Left(KittenParseError(msg))
+        case NoSuccess(msg, _) => Left(SigiParseError(msg))
         case Success(result, input) =>
           if (input.atEnd) Right(result)
-          else Left(KittenParseError(s"Unparsed tokens: ${source.substring(math.max(0, input.pos.column - 1))}"))
+          else Left(SigiParseError(s"Unparsed tokens: ${source.substring(math.max(0, input.pos.column - 1))}"))
       }
     }
 
-    private def validate(e: KStatement): Option[KittenParseError] = e match
-      case KBlock(stmts) => stmts.foldLeft[Option[KittenParseError]](None)((a, b) => a.orElse(validate(b)))
+    private def validate(e: KStatement): Option[SigiParseError] = e match
+      case KBlock(stmts) => stmts.foldLeft[Option[SigiParseError]](None)((a, b) => a.orElse(validate(b)))
       case KFunDef(_, _, body) => validate(body)
       case KExprStatement(e) => validate(e)
 
-    private def validate(file: KFile): List[KittenParseError] =
+    private def validate(file: KFile): List[SigiParseError] =
       (file.funs.map(validate) ++ List(validate(file.mainExpr))).collect { case Some(err) => err }
 
-    private def validate(e: KExpr): Option[KittenParseError] = e match
+    private def validate(e: KExpr): Option[SigiParseError] = e match
       case Chain(a, b) => validate(a).orElse(validate(b))
       case Quote(term) => validate(term)
       case node@NameTopN(names) =>
         if names.distinct.lengthCompare(names) != 0 then
-          Some(KittenParseError.namesShouldBeUnique(node))
+          Some(SigiParseError.namesShouldBeUnique(node))
         else
           None
       case _ => None
 
 
-    def parseExpr(code: String): Either[KittenCompilationError, KExpr] = {
-      KittenParser(code, expr).flatMap(e => validate(e).toLeft(e))
+    def parseExpr(code: String): Either[SigiCompilationError, KExpr] = {
+      SigiParser(code, expr).flatMap(e => validate(e).toLeft(e))
     }
 
-    def parseStmt(code: String): Either[KittenCompilationError, KStatement] = {
-      KittenParser(code, statementList).flatMap(e => validate(e).toLeft(e))
+    def parseStmt(code: String): Either[SigiCompilationError, KStatement] = {
+      SigiParser(code, statementList).flatMap(e => validate(e).toLeft(e))
     }
 
-    def parseFile(fileContents: Source): Either[KittenCompilationError, KFile] = {
-      KittenParser(fileContents.mkString("\n"), file).flatMap(file => {
+    def parseFile(fileContents: Source): Either[SigiCompilationError, KFile] = {
+      SigiParser(fileContents.mkString("\n"), file).flatMap(file => {
         val errors = validate(file)
         if errors.isEmpty
         then Right(file)
-        else Left(KittenCompilationError.allOf(errors))
+        else Left(SigiCompilationError.allOf(errors))
       })
     }
 

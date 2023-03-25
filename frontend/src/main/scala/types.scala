@@ -1,6 +1,6 @@
 
 
-package de.cfaed.kitten
+package de.cfaed.sigi
 
 package types {
 
@@ -12,7 +12,7 @@ package types {
   import scala.annotation.tailrec
   import scala.collection.mutable
   import scala.util.Right
-  import de.cfaed.kitten.{types, withFilter}
+  import de.cfaed.sigi.{types, withFilter}
 
   import java.util
   import scala.collection.mutable.ListBuffer
@@ -318,7 +318,7 @@ package types {
     def ground(te: TypedExpr): TypedExpr = new Ground().groundTerm(te)
     def groundRowVars: TySubst = new Ground().groundTerm(t => t)
 
-    def unify(a: StackType, b: StackType): Option[KittenTypeError] =
+    def unify(a: StackType, b: StackType): Option[SigiTypeError] =
       val ac = mapToIvars(a.canonicalize)
       val bc = mapToIvars(b.canonicalize)
       unify(ac.produces, bc.produces).orElse(unify(ac.consumes, bc.consumes))
@@ -327,7 +327,7 @@ package types {
       * Unify both lists of types. This adds constraints on the inference variables to make them
       * unifiable.
       */
-    def unify(a: List[KStackTypeItem], b: List[KStackTypeItem], matchSuffix: Boolean = false): Option[KittenTypeError] = {
+    def unify(a: List[KStackTypeItem], b: List[KStackTypeItem], matchSuffix: Boolean = false): Option[SigiTypeError] = {
       // println(s"unify: $a =:= $b")
 
       def makeAlias(r: KRowIVar, s: KRowIVar, inst: List[KStackTypeItem]): Unit = {
@@ -337,7 +337,7 @@ package types {
         s.instantiation = inst
       }
 
-      def unifyRIvar(rivar: KRowIVar, lst: List[KStackTypeItem]): Option[KittenTypeError] =
+      def unifyRIvar(rivar: KRowIVar, lst: List[KStackTypeItem]): Option[SigiTypeError] =
         lst match
           case List(k: KRowIVar) =>
             if k == rivar then None
@@ -357,13 +357,13 @@ package types {
               unify(rivar.instantiation, tyList, matchSuffix)
 
 
-      def unifyImpl(aReversed: List[KStackTypeItem], bReversed: List[KStackTypeItem]): Option[KittenTypeError] = {
+      def unifyImpl(aReversed: List[KStackTypeItem], bReversed: List[KStackTypeItem]): Option[SigiTypeError] = {
         (aReversed, bReversed) match
           case ((hd1: KDataType) :: tl1, (hd2: KDataType) :: tl2) => unify(hd1, hd2).orElse(unifyImpl(tl1, tl2))
           case (List(rv: KRowIVar), lst) => unifyRIvar(rv, lst.reverse)
           case (lst, List(rv: KRowIVar)) => unifyRIvar(rv, lst.reverse)
           case (Nil, Nil) => None
-          case _ => Some(KittenTypeError.cannotUnify(aReversed.reverse, bReversed.reverse))
+          case _ => Some(SigiTypeError.cannotUnify(aReversed.reverse, bReversed.reverse))
       }
 
       // We want to match these term to term, starting from the top of the stack (hence the reverse call)
@@ -371,11 +371,11 @@ package types {
     }
 
 
-    def unify(a: KDataType, b: KDataType): Option[KittenTypeError] =
+    def unify(a: KDataType, b: KDataType): Option[SigiTypeError] =
       // println(s"unify: $a =:= $b")
       if a == b then None
       else
-        def unifyIvar(a: KInferenceVar, b: KDataType): Option[KittenTypeError] =
+        def unifyIvar(a: KInferenceVar, b: KDataType): Option[SigiTypeError] =
           if a.instantiation != null then
             return unify(a.instantiation, b)
 
@@ -389,7 +389,7 @@ package types {
           case (y, x: KInferenceVar) => unifyIvar(x, y)
           case (KFun(st1), KFun(st2)) => unify(st1, st2)
           case (KList(dt1), KList(dt2)) => unify(dt1, dt2)
-          case _ => Some(KittenTypeError.mismatch(a, b))
+          case _ => Some(SigiTypeError.mismatch(a, b))
   }
 
   type BindingTypes = Map[String, KDataType]
@@ -412,11 +412,11 @@ package types {
         ctx = this.ctx
       )
 
-    def typeOf(termName: String): Either[KittenTypeError, KDataType] =
-      bindings.get(termName).toRight(KittenTypeError.undef(termName))
+    def typeOf(termName: String): Either[SigiTypeError, KDataType] =
+      bindings.get(termName).toRight(SigiTypeError.undef(termName))
 
-    def resolveType(typeName: String): Either[KittenTypeError, datamodel.TypeDescriptor] =
-      typesInScope.get(typeName).toRight(KittenTypeError.undef(typeName))
+    def resolveType(typeName: String): Either[SigiTypeError, datamodel.TypeDescriptor] =
+      typesInScope.get(typeName).toRight(SigiTypeError.undef(typeName))
 
   }
   object TypingScope {
@@ -425,25 +425,25 @@ package types {
   }
 
 
-  private def inferListType(scope: TypingScope)(itemTrees: List[TypedExpr]): Either[KittenTypeError, KList] = itemTrees match
+  private def inferListType(scope: TypingScope)(itemTrees: List[TypedExpr]): Either[SigiTypeError, KList] = itemTrees match
     case Nil => Right(StackType.generic1(KList.apply)) // -> List['a]
     case hd :: tl =>
       // now there may be type inference involved to unify types
-      val itemType = tl.foldLeft[Either[KittenTypeError, StackType]](Right(scope.ctx.mapToIvars(hd.stackTy))) {
+      val itemType = tl.foldLeft[Either[SigiTypeError, StackType]](Right(scope.ctx.mapToIvars(hd.stackTy))) {
         (either, newT) =>
           either.flatMap(leftT => {
             val rightT = scope.ctx.mapToIvars(newT.stackTy)
             scope.ctx.unify(leftT, rightT).toLeft(leftT)
-              .left.map { _ => KittenTypeError.mismatch(leftT, newT.stackTy) }
+              .left.map { _ => SigiTypeError.mismatch(leftT, newT.stackTy) }
           })
       }
 
       itemType.flatMap({
         case StackType(Nil, List(single: KDataType)) => Right(KList(single))
-        case st => Left(KittenTypeError.cannotBeListItem(st))
+        case st => Left(SigiTypeError.cannotBeListItem(st))
       })
 
-  def typeFile(env: TypingScope)(file: KFile): Either[KittenTypeError, TModule] = {
+  def typeFile(env: TypingScope)(file: KFile): Either[SigiTypeError, TModule] = {
     doValidation(env)(KBlock(file.funs)).flatMap {
       case TBlock(funs) =>
         val typedFuns: Map[String, TFunDef] = funs.collect { case fun@TFunDef(name, _, _) => (name, fun) }.toMap
@@ -455,20 +455,20 @@ package types {
     }
   }
 
-  def checkTypeConforms(expectedTy: StackType)(term: TypedExpr): Option[KittenTypeError] =
+  def checkTypeConforms(expectedTy: StackType)(term: TypedExpr): Option[SigiTypeError] =
     if term.stackTy != expectedTy
-    then Some(KittenTypeError.mismatch(expectedTy, term.stackTy))
+    then Some(SigiTypeError.mismatch(expectedTy, term.stackTy))
     else None
 
-  def resolveType(env: TypingScope)(t: TypeSpec): Either[KittenTypeError, KDataType] = t match
+  def resolveType(env: TypingScope)(t: TypeSpec): Either[SigiTypeError, KDataType] = t match
     case TypeCtor(name, tyargs) => env.resolveType(name).flatMap {
       case datamodel.TypeParm(tv) =>
         if tyargs.isEmpty
         then Right(tv)
-        else Left(KittenTypeError(s"Type parameter $name cannot have type arguments"))
+        else Left(SigiTypeError(s"Type parameter $name cannot have type arguments"))
       case typeDesc =>
         if typeDesc.tparms.lengthCompare(tyargs) != 0 then
-          Left(KittenTypeError(s"Expected ${typeDesc.tparms.length} type arguments, got ${tyargs.length}"))
+          Left(SigiTypeError(s"Expected ${typeDesc.tparms.length} type arguments, got ${tyargs.length}"))
         else (name, tyargs) match
           case ("List", List(item)) => resolveType(env)(item).map(KList.apply)
           case ("int", Nil) => Right(KInt)
@@ -479,7 +479,7 @@ package types {
 
     case ft: FunType => resolveFunType(env)(ft)
 
-  def resolveFunType(env: TypingScope)(t: FunType): Either[KittenTypeError, KFun] =
+  def resolveFunType(env: TypingScope)(t: FunType): Either[SigiTypeError, KFun] =
     val FunType(tparms, consumes, produces) = t
     val tvGen = KTypeVar.typeVarGenerator()
     val fullEnv = env.addTypeInScope(tparms.map(name => (name, datamodel.TypeParm(tvGen()))))
@@ -489,7 +489,7 @@ package types {
     } yield KFun(StackType(consumes = cs, produces = ps))
 
 
-  def doValidation(env: TypingScope)(ast: KStatement): Either[KittenTypeError, TypedStmt] = {
+  def doValidation(env: TypingScope)(ast: KStatement): Either[SigiTypeError, TypedStmt] = {
     ast match
       case KBlock(stmts) =>
 
@@ -511,10 +511,10 @@ package types {
 
 
   /** Turn a [[KExpr]] into a [[TypedExpr]] by performing type inference. */
-  def assignType(env: TypingScope)(node: KExpr): Either[KittenTypeError, TypedExpr] =
+  def assignType(env: TypingScope)(node: KExpr): Either[SigiTypeError, TypedExpr] =
     assignTypeRec(env)(node).map(_._1).map(env.ctx.ground)
 
-  private def assignTypeRec(scope: TypingScope)(node: KExpr): Either[KittenTypeError, (TypedExpr, TypingScope)] = node match
+  private def assignTypeRec(scope: TypingScope)(node: KExpr): Either[SigiTypeError, (TypedExpr, TypingScope)] = node match
     case PushPrim(ty, v) => Right((TPushPrim(ty, v), scope))
     case PushList(items) =>
       for {

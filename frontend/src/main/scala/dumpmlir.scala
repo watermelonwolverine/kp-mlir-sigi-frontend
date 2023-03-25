@@ -1,11 +1,11 @@
-package de.cfaed.kitten
+package de.cfaed.sigi
 
 import ast.*
 import datamodel.{TypeDescriptor, TypeParm}
 import types.*
 import types.StackType.canonicalize
 
-import de.cfaed.kitten.eval.Env
+import de.cfaed.sigi.eval.Env
 
 import java.io.PrintStream
 import scala.io
@@ -194,7 +194,7 @@ package dumpmlir {
 
     val env = Env.Default.toTypingScope
     for {
-      parsed <- KittenParser.parseFile(in)
+      parsed <- SigiParser.parseFile(in)
       typed <- types.typeFile(env)(parsed)
     } dumpAst(out)(typed)
 
