@@ -1,7 +1,7 @@
 package de.cfaed.sigi
 
 import ast.{KExpr, NameTopN}
-import eval.{Env, KValue}
+import repl.{Env, KValue}
 import types.*
 
 import scala.util.parsing.input.{Position, Positional}

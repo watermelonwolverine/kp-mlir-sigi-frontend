@@ -1,7 +1,7 @@
 package de.cfaed.sigi
 
 
-package eval {
+package repl {
 
   import ast.*
   import datamodel.{TypeDescriptor, TypeParm}

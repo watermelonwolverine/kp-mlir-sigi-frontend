@@ -1,7 +1,7 @@
 package de.cfaed.sigi
 
 import ast.*
-import eval.Env
+import repl.Env
 import types.*
 
 import org.scalatest.funsuite.AnyFunSuite

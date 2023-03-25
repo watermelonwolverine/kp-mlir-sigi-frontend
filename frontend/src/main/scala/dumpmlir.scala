@@ -5,7 +5,7 @@ import datamodel.{TypeDescriptor, TypeParm}
 import types.*
 import types.StackType.canonicalize
 
-import de.cfaed.sigi.eval.Env
+import de.cfaed.sigi.repl.Env
 
 import java.io.PrintStream
 import scala.io
@@ -13,6 +13,8 @@ import scala.annotation.tailrec
 import scala.collection.mutable
 
 package dumpmlir {
+
+  import de.cfaed.sigi.dumpmlir.MlirBuilder.builtinIntOps
 
   import scala.io.Source
 
@@ -37,6 +39,7 @@ package dumpmlir {
     }
   }
 
+  // helper type that represents a push operation
   sealed trait SigiDialectOp
 
   class MPopOp(val ty: KStackTypeItem,
@@ -48,7 +51,7 @@ package dumpmlir {
     val outVal = valIdGen.next()
   }
 
-  class MPushOp(val ty: KStackTypeItem,
+  class MPushOp(val tyStr: String,
                 envIdGen: IdGenerator[MlirIdent],
                 val inVal: MlirIdent) extends SigiDialectOp {
     val inEnv = envIdGen.cur
@@ -64,11 +67,14 @@ package dumpmlir {
     /** Symbols for quote generation. */
     private val quoteIdGen = IdGenerator(MlirSymbol("quote"))
 
+    /** Map of quote ID to the body of the quote. */
+    private val deferredQuoteGen = mutable.Map[MlirSymbol, TypedExpr]()
+
     private val localSymEnv = mutable.Map[String, MlirIdent]()
 
     private def mlirType(ty: KStackTypeItem): String = ty match
-      case KInt => "!sigi.int"
-      case KBool => "!sigi.bool"
+      case KInt => "i32"
+      case KBool => "i1"
       case KString => "!sigi.str"
       case KFun(stack) =>
         val consumed = stack.consumes.map(mlirType).mkString(",")
@@ -106,8 +112,12 @@ package dumpmlir {
         case op: MPopOp =>
           println(s"${op.outEnv}, ${op.outVal} = sigi.pop ${op.inEnv}: ${mlirType(op.ty)} $comment")
         case op: MPushOp =>
-          println(s"${op.outEnv} = sigi.push ${op.inEnv}, ${op.inVal}: ${mlirType(op.ty)} $comment")
+          println(s"${op.outEnv} = sigi.push ${op.inEnv}, ${op.inVal}: ${op.tyStr} $comment")
     }
+
+    private def renderPush(ty: KStackTypeItem,
+                           envIdGen: IdGenerator[MlirIdent],
+                           inVal: MlirIdent) = renderOp(new MPushOp(mlirType(ty), envIdGen, inVal))
 
     /**
       * Contract: before this fun is invoked, the [[envIdGen]] is the ID of the last environment.
@@ -136,7 +146,16 @@ package dumpmlir {
           val mlirTy = mlirType(ty)
 
           println(s"$listId = sigi.create_list $args: $mlirTy")
-          renderOp(new MPushOp(ty, envIdGen, listId))
+          renderPush(ty, envIdGen, listId)
+
+
+        case TPushPrim(ty@(KInt | KBool), value) =>
+          val cstId = valIdGen.next()
+          val cstAttr = makeConstAttr(ty, value)
+          val mlirTy = mlirType(ty)
+
+          println(s"$cstId = arith.constant $cstAttr: $mlirTy")
+          renderPush(ty, envIdGen, cstId)
 
         case TPushPrim(ty, value) =>
           val cstId = valIdGen.next()
@@ -144,30 +163,29 @@ package dumpmlir {
           val mlirTy = mlirType(ty)
 
           println(s"$cstId = sigi.constant $cstAttr: $mlirTy")
-          renderOp(new MPushOp(ty, envIdGen, cstId))
+          renderPush(ty, envIdGen, cstId)
 
 
         // just pushing one item
         case TFunApply(StackType(Nil, List(ty)), name) =>
           localSymEnv.get(name) match
-            case Some(valueId) => renderOp(new MPushOp(ty, envIdGen, valueId))
+            case Some(valueId) => renderPush(ty, envIdGen, valueId)
             case None =>
               val errId = envIdGen.next()
               println(s"$errId = sigi.error $envId, {msg=\"undefined name '$name'\"}")
 
-        // builtin arithmetic
-        case TFunApply(StackType(List(a, b), List(c)), name@("+" | "*" | "/" | "%")) =>
-          val pop0 = new MPopOp(a, envIdGen, valIdGen)
-          val pop1 = new MPopOp(b, envIdGen, valIdGen)
+        // builtin arithmetic and comparisons
+        case TFunApply(StackType(List(KInt, KInt), List(c)), name) if builtinIntOps.contains(name) =>
+          val pop0 = new MPopOp(KInt, envIdGen, valIdGen)
+          val pop1 = new MPopOp(KInt, envIdGen, valIdGen)
 
           val result = valIdGen.next()
-          val opName = Map("+" -> "add", "-" -> "sub", "/" -> "div", "%" -> "mod")(name)
+          val builtinOp = builtinIntOps(name)
 
           renderOp(pop0)
           renderOp(pop1)
-          println(s"$result = sigi.$opName ${pop0.outVal}, ${pop1.outVal}: ${mlirType(c)}")
-          val pushBack = new MPushOp(c, envIdGen, result)
-          renderOp(pushBack)
+          println(s"$result = $builtinOp ${pop0.outVal}, ${pop1.outVal}: ${mlirType(KInt)}")
+          renderPush(c, envIdGen, result)
 
         // todo general case of function calls.
         //  do we need to monomorphise generic calls?
@@ -175,12 +193,12 @@ package dumpmlir {
         case TPushQuote(term) =>
           val quoteSym = quoteIdGen.next()
           val cstId = valIdGen.next()
+          deferredQuoteGen.put(quoteSym, term)
 
           val ty = KFun(term.stackTy)
-          val mlirTy = mlirType(ty)
 
-          println(s"$cstId = sigi.funvalue $quoteSym: $mlirTy")
-          renderOp(new MPushOp(ty, envIdGen, cstId))
+          println(s"$cstId = func.constant $quoteSym: !sigi.env -> !sigi.env // $ty")
+          renderOp(new MPushOp("!sigi.env -> !sigi.env", envIdGen, cstId))
 
         case TNameTopN(stackTy, names) =>
           for ((name, ty) <- names.zip(stackTy.consumes)) {
@@ -188,6 +206,23 @@ package dumpmlir {
             localSymEnv.put(name, pop.outVal)
             renderOp(pop, comment = s"// $name")
           }
+  }
+
+  object MlirBuilder {
+    val builtinIntOps = Map(
+      "+" -> "arith.addi",
+      "-" -> "arith.subi",
+      "/" -> "arith.divi",
+      "%" -> "arith.modi",
+      "<=" -> "arith.cmpi \"sle\",",
+      ">=" -> "arith.cmpi \"sge\",",
+      "<" -> "arith.cmpi \"slt\",",
+      ">" -> "arith.cmpi \"sgt\",",
+
+      "==" -> "arith.cmpi \"eq\",",
+      "!=" -> "arith.cmpi \"ne\",",
+    )
+
   }
 
   /*
@@ -244,7 +279,7 @@ package dumpmlir {
   @main
   def dumpMlirMain(): Unit = doDumpMlir(System.out)(io.Source.stdin)
   @main
-  def dumpMlirMain2(): Unit = doDumpMlir(System.out)(io.Source.fromString("(1+2)"))
+  def testDumping(): Unit = doDumpMlir(System.out)(io.Source.fromString("define double(int->int): dup (+);; (1+2) double show"))
 
 
 }

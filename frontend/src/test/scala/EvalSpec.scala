@@ -1,6 +1,6 @@
 package de.cfaed.sigi
 
-import eval.{Env, KValue, VList, VNum}
+import repl.{Env, KValue, VList, VNum}
 import types.*
 import org.scalatest.funsuite.AnyFunSuite
 
@@ -16,7 +16,7 @@ class EvalSpec extends AnyFunSuite {
       val result: Either[SigiError, Env] = for {
         parsed <- ast.SigiParser.parseExpr(term)
         typed <- types.assignType(env.toTypingScope)(parsed)
-        env <- eval.eval(typed)(env)
+        env <- repl.eval(typed)(env)
       } yield env
 
       assertResult(Right(stack))(result.right.map(_.stack))

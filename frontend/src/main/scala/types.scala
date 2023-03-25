@@ -5,7 +5,7 @@ package de.cfaed.sigi
 package types {
 
   import ast.*
-  import eval.Env
+  import repl.Env
   import types.StackType.canonicalize
 
   import java.util.{Locale, Objects}
@@ -259,8 +259,7 @@ package types {
 
   private[types] class TypingCtx {
 
-    /** Replace type vars with fresh inference vars. */
-    def mapToIvars(st: StackType): StackType = {
+    def toIvarSubst: TySubst = {
       val toIvars = mutable.Map[KTypeVar, KInferenceVar]()
       val toRivars = mutable.Map[KRowVar, KRowIVar]()
       new TySubst({
@@ -270,8 +269,11 @@ package types {
         override protected def applyEltWiseSubst(t: KStackTypeItem): KStackTypeItem = t match
           case t: KRowVar => toRivars.getOrElseUpdate(t, KRowIVar(t))
           case t => super.applyEltWiseSubst(t)
-      }.substStackType(st)
+      }
     }
+    /** Replace type vars with fresh inference vars. */
+    def mapToIvars(st: StackType): StackType = toIvarSubst.substStackType(st)
+    def mapToIvars(st: TypedExpr): TypedExpr = toIvarSubst.substTerm(st)
 
 
     private class Ground {
@@ -310,15 +312,16 @@ package types {
 
       }
 
-      def groundTerm(te: TypedExpr): TypedExpr = groundTerm(groundImpl).substTerm(te)
+      def groundSubst: TySubst = groundTerm(groundImpl)
     }
 
 
     /** Replace inference variables with their instantiation.
       * Uninstantiated variables are replaced by fresh type vars.
       */
-    def ground(te: TypedExpr): TypedExpr = new Ground().groundTerm(te)
+    def ground(te: TypedExpr): TypedExpr = new Ground().groundSubst.substTerm(te)
     def groundRowVars: TySubst = new Ground().groundTerm(t => t)
+    def groundSubst: TySubst = new Ground().groundSubst
 
     def unify(a: StackType, b: StackType): Option[SigiTypeError] =
       val ac = mapToIvars(a.canonicalize)
@@ -561,16 +564,19 @@ package types {
         case ivar: KInferenceVar if ivar.instantiation != null => typeFunApply(ivar.instantiation)
         case t => TFunApply(StackType.pushOne(t), name)
 
-      scope.typeOf(name).left.map(_.setPos(node.pos)).map(typeFunApply).map(f => (f.setPos(node.pos), scope))
+
+      scope.typeOf(name) match
+        case Left(err) => Left(err.setPos(node.pos))
+        case Right(ty) => Right((typeFunApply(ty).setPos(node.pos), scope))
 
     case Chain(left, right) =>
-      val toIvars = scope.ctx.mapToIvars _
       for {
         (leftTree, leftScope) <- assignTypeRec(scope)(left)
         (rightTree, rightScope) <- assignTypeRec(leftScope)(right)
         newEnv <- {
-          val (ta, tb) = (toIvars(leftTree.stackTy.canonicalize), toIvars(rightTree.stackTy.canonicalize))
-
+          val toIvarSubst = scope.ctx.toIvarSubst
+          val (leftI, rightI) = (toIvarSubst.substTerm(leftTree), toIvarSubst.substTerm(rightTree))
+          val (ta, tb) = (toIvarSubst.substStackType(leftI.stackTy.canonicalize), toIvarSubst.substStackType(rightI.stackTy.canonicalize))
 
           scope.ctx.unify(ta.produces, tb.consumes).map(_.setPos(node.pos))
             .toLeft({
@@ -584,7 +590,11 @@ package types {
 
               StackType(consumes = cons ++ ta2.consumes, produces = prod ++ tb2.produces)
             })
-            .map(st => TChain(st, leftTree, rightTree).setPos(node.pos))
+            .map { it =>
+              // Here the ground gives a more specific type to the tree branches.
+              val ground = scope.ctx.groundSubst
+              TChain(it, ground.substTerm(leftI), ground.substTerm(rightI)).setPos(node.pos)
+            }
             .map(term => (term, rightScope))
         }
       } yield newEnv

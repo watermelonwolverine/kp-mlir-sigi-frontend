@@ -7,7 +7,7 @@ package builtins {
 
   import ast.*
   import types.*
-  import eval.*
+  import repl.*
 
   import scala.collection.immutable.List
 
