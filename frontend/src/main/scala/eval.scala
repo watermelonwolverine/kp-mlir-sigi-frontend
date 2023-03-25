@@ -74,6 +74,9 @@ package eval {
 
   }
   case class VPrimitive[T](ty: KPrimitive[T], v: T) extends KValue
+  object VBool {
+    def apply(boolean: Boolean): VPrimitive[Boolean] = VPrimitive(KBool, boolean)
+  }
   object VNum {
     def apply(i: Int): VPrimitive[Int] = VPrimitive(KInt, i)
     def unapply(prim: VPrimitive[_]): Option[Int] = prim match

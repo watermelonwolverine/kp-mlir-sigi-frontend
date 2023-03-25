@@ -48,7 +48,7 @@ package ast {
       case Quote(term) => s"{ $term }"
   }
 
-  case class Chain(a: KExpr, b: KExpr) extends KExpr 
+  case class Chain(a: KExpr, b: KExpr) extends KExpr
   case class PushPrim[T](ty: KPrimitive[T], value: T) extends KExpr
   case class PushList(items: List[KExpr]) extends KExpr
   case class FunApply(name: String) extends KExpr
@@ -143,13 +143,15 @@ package ast {
         }
       }
 
+
     private def multexpr: Parser[KExpr] = makeBinary(unary, OP("*") | OP("/") | OP("%"))
 
     private def addexpr: Parser[KExpr] = makeBinary(multexpr, OP("+") | OP("-"))
 
+    private def compexpr: Parser[KExpr] = makeBinary(addexpr, OP("<") | OP(">") | OP("<=") | OP(">=") | OP("==") | OP("!="))
 
     private def sequenceableExpr: Parser[KExpr] =
-      addexpr
+      compexpr
 
     private def exprSeq: Parser[KExpr] =
       rep1(sequenceableExpr) ^^ (_ reduceLeft Chain.apply)
@@ -157,7 +159,7 @@ package ast {
     private def expr: Parser[KExpr] = exprSeq
     private def statement: Parser[KStatement] = funDef | expr <~ PHAT_SEMI.? ^^ KExprStatement.apply
     private def statementList: Parser[KBlock] = rep(statement) ^^ KBlock.apply
-    private def file: Parser[KFile] = rep(funDef) ~ expr ^^ {
+    private def file: Parser[KFile] = rep(funDef) ~ expr <~ PHAT_SEMI.? ^^ {
       case (funs: List[KFunDef]) ~ (expr: KExpr) => KFile(funs, expr)
     }
 

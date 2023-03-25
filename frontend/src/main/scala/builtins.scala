@@ -11,18 +11,35 @@ package builtins {
 
   import scala.collection.immutable.List
 
+  private def genericCmpOp(name: String, negated: Boolean): (String, VFun) = {
+    stackFun(name, StackType.generic1(tv => StackType(consumes = List(tv, tv), produces = List(KBool))), {
+      case a :: b :: tail =>
+        val eq = a == b
+        Right(VBool(eq != negated) :: tail)
+    })
+  }
+
+  private def cmpOp(name: String, definition: (Int, Int) => Boolean): (String, VFun) = {
+    stackFun(name, StackType(consumes = List(KInt, KInt), produces = List(KBool)), {
+      case VNum(a) :: VNum(b) :: tail =>
+        try {
+          val res = definition(a, b)
+          Right(VBool(res) :: tail)
+        } catch {
+          case e: Exception => Left(SigiEvalError(s"Error executing op $name: ${e.getMessage}"))
+        }
+    })
+  }
 
   private def binOp(name: String, definition: (Int, Int) => Int): (String, VFun) = {
-    fun(name, types.BinOpType, t => env => {
-      env.stack match
-        case VNum(a) :: VNum(b) :: tail =>
-          try {
-            val res = definition(a, b)
-            Right(env.copy(stack = VNum(res) :: tail))
-          } catch {
-            case e: Exception => Left(SigiEvalError(s"Error executing op $name: ${e.getMessage}"))
-          }
-        case _ => Left(SigiEvalError.stackTypeError(t, env))
+    stackFun(name, types.BinOpType, {
+      case VNum(a) :: VNum(b) :: tail =>
+        try {
+          val res = definition(a, b)
+          Right(VNum(res) :: tail)
+        } catch {
+          case e: Exception => Left(SigiEvalError(s"Error executing op $name: ${e.getMessage}"))
+        }
     })
   }
 
@@ -75,6 +92,12 @@ package builtins {
     binOp("*", _ * _),
     binOp("/", _ / _),
     binOp("%", _ % _),
+    cmpOp("<", _ < _),
+    cmpOp(">", _ > _),
+    cmpOp(">=", _ >= _),
+    cmpOp("<=", _ <= _),
+    genericCmpOp("==", false),
+    genericCmpOp("!=", true),
     unaryOp("unary-", a => -a),
     unaryOp("unary+", a => a),
     unaryOp("unary~", a => a ^ a),
