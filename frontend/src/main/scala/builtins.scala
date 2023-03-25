@@ -9,6 +9,8 @@ package builtins {
   import types.*
   import eval.*
 
+  import scala.collection.immutable.List
+
 
   private def binOp(name: String, definition: (Int, Int) => Int): (String, VFun) = {
     fun(name, types.BinOpType, t => env => {
@@ -52,20 +54,7 @@ package builtins {
   val Intrinsic_if = ":if:"
 
   val ReplBuiltins: Map[String, KValue] = Map(
-    // consume top of the stack and print it
-    // this is `pp pop`
-    stackFun("show", StackType.generic1(tv => StackType(consumes = List(tv))), {
-      case hd :: tl =>
-        println(s"show: $hd")
-        Right(tl)
-    }),
-    // print and pass: print the top of the stack but leave it there
-    // this function is equivalent to `dup show`
-    stackFun("pp", StackType.generic1(StackType.symmetric1), {
-      case stack@(hd :: _) =>
-        println(s"pp: $hd")
-        Right(stack)
-    }),
+
     fun("env", StackType(), _ => env => {
       println(s"stack (top is right): ${env.stackToString}")
       println(s"env: ${env.varsToString}")
@@ -142,6 +131,21 @@ package builtins {
           val newEnv = env.copy(stack = tl)
           if (condition) thenDef(newEnv) else elseDef(newEnv)
         case _ => Left(SigiEvalError.stackTypeError(t, env))
+    }),
+
+    // consume top of the stack and print it
+    // this is `pp pop`
+    stackFun("show", StackType.generic1(tv => StackType(consumes = List(tv))), {
+      case hd :: tl =>
+        println(s"show: $hd")
+        Right(tl)
+    }),
+    // print and pass: print the top of the stack but leave it there
+    // this function is equivalent to `dup show`
+    stackFun("pp", StackType.generic1(StackType.symmetric1), {
+      case stack@(hd :: _) =>
+        println(s"pp: $hd")
+        Right(stack)
     }),
   )
 }

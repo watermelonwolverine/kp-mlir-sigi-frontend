@@ -37,6 +37,25 @@ package dumpmlir {
     }
   }
 
+  sealed trait SigiDialectOp
+
+  class MPopOp(val ty: KStackTypeItem,
+               envIdGen: IdGenerator[MlirIdent],
+               valIdGen: IdGenerator[MlirIdent]) extends SigiDialectOp {
+    val inEnv = envIdGen.cur
+    val outEnv = envIdGen.next()
+
+    val outVal = valIdGen.next()
+  }
+
+  class MPushOp(val ty: KStackTypeItem,
+                envIdGen: IdGenerator[MlirIdent],
+                val inVal: MlirIdent) extends SigiDialectOp {
+    val inEnv = envIdGen.cur
+    val outEnv = envIdGen.next()
+  }
+
+
   class MlirBuilder(val out: PrintStream) {
     /** Ident of the environment. */
     private val envIdGen = IdGenerator(MlirIdent("env"))
@@ -72,6 +91,13 @@ package dumpmlir {
       out.println(s"}")
     }
 
+    def renderOp(op: SigiDialectOp, comment: String = ""): Unit = {
+      op match
+        case op: MPopOp =>
+          out.println(s"${op.outEnv}, ${op.outVal} = sigi.pop ${op.inEnv}: ${mlirType(op.ty)} $comment")
+        case op: MPushOp =>
+          out.println(s"${op.outEnv} = sigi.push ${op.inEnv}, ${op.inVal}: ${mlirType(op.ty)} $comment")
+    }
 
     /**
       * Contract: before this fun is invoked, the [[envIdGen]] is the ID of the last environment.
@@ -80,76 +106,76 @@ package dumpmlir {
       * Assumptions: every name is unique in the given term.
       *
       */
-    def dumpAst(t: TypedExpr): Unit = t match
-      case TChain(_, a, b) =>
-        dumpAst(a)
-        dumpAst(b)
+    def dumpAst(t: TypedExpr): Unit =
+      val envId = envIdGen.cur
+      t match
+        case TChain(_, a, b) =>
+          dumpAst(a)
+          dumpAst(b)
 
-      case TPushList(ty, items) =>
-        val envId = envIdGen.cur
-        val itemIds = for (item <- items) yield {
-          dumpAst(item)
-          envIdGen.cur
-        }
-        val args = itemIds.mkString(", ")
-        val listId = valIdGen.next()
-        val pushId = envIdGen.next()
+        case TPushList(ty, items) =>
+          val itemIds = for (item <- items) yield {
+            dumpAst(item)
+            val pop = new MPopOp(ty.item, envIdGen, valIdGen)
+            renderOp(pop)
+            pop.outVal
+          }
+          val args = itemIds.mkString(", ")
+          val listId = valIdGen.next()
 
-        val mlirTy = mlirType(ty)
+          val mlirTy = mlirType(ty)
 
-        out.println(s"$listId = sigi.create_list $args: $mlirTy")
-        out.println(s"$pushId = sigi.push $envId, $listId: $mlirTy")
+          out.println(s"$listId = sigi.create_list $args: $mlirTy")
+          renderOp(new MPushOp(ty, envIdGen, listId))
 
-      case TPushPrim(ty, value) =>
-        val envId = envIdGen.cur
-        val cstId = valIdGen.next()
-        val pushId = envIdGen.next()
+        case TPushPrim(ty, value) =>
+          val cstId = valIdGen.next()
+          val cstAttr = makeConstAttr(ty, value)
+          val mlirTy = mlirType(ty)
 
-        val cstAttr = makeConstAttr(ty, value)
-        val mlirTy = mlirType(ty)
-
-        out.println(s" $cstId = sigi.constant $cstAttr: $mlirTy")
-        out.println(s" $pushId = sigi.push $envId $cstId: $mlirTy")
+          out.println(s" $cstId = sigi.constant $cstAttr: $mlirTy")
+          renderOp(new MPushOp(ty, envIdGen, cstId))
 
 
-      case TFunApply(stackTy, name) => stackTy match
-        // todo builtins
-        // todo make sure stack type is ground
-        case StackType(Nil, List(ty)) =>
-          val envId = envIdGen.cur
+        // just pushing one item
+        case TFunApply(StackType(Nil, List(ty)), name) =>
           localSymEnv.get(name) match
-            case Some(valueId) =>
-              val pushId = envIdGen.next()
-              val mlirTy = mlirType(ty)
-              out.println(s"$pushId = sigi.push $envId, $valueId: $mlirTy")
+            case Some(valueId) => renderOp(new MPushOp(ty, envIdGen, valueId))
             case None =>
               val errId = envIdGen.next()
               out.println(s"$errId = sigi.error $envId, {msg=\"undefined name '$name'\"}")
-        case _ => ??? // actual function call
 
-      case TPushQuote(term) =>
-        val envId = envIdGen.cur
-        val quoteSym = quoteIdGen.next()
-        val cstId = valIdGen.next()
-        val pushId = envIdGen.next()
+        case TFunApply(StackType(List(a, b), List(c)), name@("+" | "*" | "/" | "%")) =>
+          // builtin arithmetic
+          val pop0 = new MPopOp(a, envIdGen, valIdGen)
+          val pop1 = new MPopOp(b, envIdGen, valIdGen)
 
-        val mlirTy = mlirType(KFun(term.stackTy))
+          val result = valIdGen.next()
+          val opName = Map("+" -> "add", "-" -> "sub", "/" -> "div", "%" -> "mod")(name)
 
-        out.println(s"$cstId = sigi.funvalue $quoteSym: $mlirTy")
-        out.println(s"$pushId = sigi.push $envId, $cstId: $mlirTy")
+          renderOp(pop0)
+          renderOp(pop1)
+          out.println(s"$result = sigi.$opName ${pop0.outVal}, ${pop1.outVal}: ${mlirType(c)}")
+          val pushBack = new MPushOp(c, envIdGen, result)
+          renderOp(pushBack)
 
-      case TNameTopN(stackTy, names) =>
-        var envId = envIdGen.cur
+        case TFunApply(_, _) => ???
+        case TPushQuote(term) =>
+          val quoteSym = quoteIdGen.next()
+          val cstId = valIdGen.next()
 
-        for ((name, ty) <- names.zip(stackTy.consumes)) {
-          val popId = envIdGen.next()
-          val popValueId = valIdGen.next()
+          val ty = KFun(term.stackTy)
           val mlirTy = mlirType(ty)
 
-          localSymEnv.put(name, popValueId)
-          out.println(s"$popId, $popValueId = sigi.pop $envId: $mlirTy // $name")
-          envId = popId
-        }
+          out.println(s"$cstId = sigi.funvalue $quoteSym: $mlirTy")
+          renderOp(new MPushOp(ty, envIdGen, cstId))
+
+        case TNameTopN(stackTy, names) =>
+          for ((name, ty) <- names.zip(stackTy.consumes)) {
+            val pop = new MPopOp(ty, envIdGen, valIdGen)
+            localSymEnv.put(name, pop.outVal)
+            renderOp(pop, comment = s"// $name")
+          }
   }
 
   /*
@@ -181,23 +207,26 @@ package dumpmlir {
         for (st <- stmts) dumpAst(out)(st)
   }
 
-  def dumpAst(out: PrintStream)(t: TModule): Unit = {
-    for ((_, fun) <- t.functions) {
+  def dumpAst(out: PrintStream)(module: TModule): Unit = {
+    for ((_, fun) <- module.functions) {
       new MlirBuilder(out).dumpFunction(fun)
     }
 
-    val mainFun = TFunDef("__main__", StackType(), t.mainExpr)
+    val mainFun = TFunDef("__main__", StackType(), module.mainExpr)
     new MlirBuilder(out).dumpFunction(mainFun)
   }
 
   def doDumpMlir(out: PrintStream)(in: Source): Unit = {
 
     val env = Env.Default.toTypingScope
-    for {
+    val res = for {
       parsed <- SigiParser.parseFile(in)
       typed <- types.typeFile(env)(parsed)
-    } dumpAst(out)(typed)
+    } yield dumpAst(out)(typed)
 
+    res match
+      case Left(err) => println(err)
+      case _ =>
   }
 
   @main
