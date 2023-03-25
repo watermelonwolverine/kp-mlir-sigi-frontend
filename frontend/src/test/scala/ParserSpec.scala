@@ -68,6 +68,10 @@ class ParserSpec extends AnyFunSuite with Matchers {
 
   checkExpr("-> x, y; x * y", names("x", "y") ~ (app("x") ~ app("y") ~ app("*")))
   checkTreeMatches("define double(int-> int): ->x; 2*x;;") {
-    case KBlock(List(KFunDef("double", FunType(Nil, List(_), List(_)), _))) =>
+    case KBlock(List(KFunDef("double", FunType(List(_), List(_)), _))) =>
+  }
+
+  checkTreeMatches("define id('a -> 'a): ->x; x;;") {
+    case KBlock(List(KFunDef("id", FunType(List(TypeVar("'a")), List(TypeVar("'a"))), _))) =>
   }
 }

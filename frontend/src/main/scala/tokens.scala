@@ -18,6 +18,7 @@ package tokens {
 
   case class NUMBER(value: Int) extends KToken
   case class ID(name: String) extends KToken
+  case class TVAR(name: String) extends KToken
   case class OP(opName: String) extends KToken
   case class STRING(value: String) extends KToken
 
@@ -50,6 +51,7 @@ package tokens {
     override type Token = KToken
 
     def ident: Parser[ID] = """[a-zA-Z]\w*""".r ^^ ID.apply
+    def tvar: Parser[TVAR] = """'[a-z][a-z0-9]*""".r ^^ TVAR.apply
     def op: Parser[OP] = "[-+*/%]|==|<>".r ^^ OP.apply
     def number: Parser[NUMBER] = """(0|[1-9]\d*)""".r ^^ { a => NUMBER(a.toInt) }
     def string: Parser[STRING] =
@@ -89,7 +91,7 @@ package tokens {
         | "define" ^^^ DEFINE
 
     override def token: SigiLexer.Parser[SigiLexer.Token] =
-      positioned(keyword | ident | number | punct | op | string)
+      positioned(keyword | ident | number | punct | op | string | tvar)
 
     override def whitespace: SigiLexer.Parser[Any] = "\\s*".r
 

@@ -482,17 +482,27 @@ package types {
           case ("bool", Nil) => Right(KBool)
           case _ => ??? // todo create user type
     }
-
+    case tv: TypeVar => Right(KTypeVar(tv.name)) // here we create a new type var always. We will coalesce type vars later.
     case ft: FunType => resolveFunType(env)(ft)
 
   def resolveFunType(env: TypingScope)(t: FunType): Either[SigiTypeError, KFun] =
     val FunType(consumes, produces) = t
-    val tvGen = KTypeVar.typeVarGenerator()
-    val fullEnv = env // todo env.addTypeInScope(tparms.map(name => (name, datamodel.TypeParm(tvGen()))))
     for {
-      cs <- consumes.map(resolveType(fullEnv)).flattenList
-      ps <- produces.map(resolveType(fullEnv)).flattenList
-    } yield KFun(StackType(consumes = cs, produces = ps))
+      cs <- consumes.map(resolveType(env)).flattenList
+      ps <- produces.map(resolveType(env)).flattenList
+    } yield {
+      val st = StackType(consumes = cs, produces = ps)
+      val canon = mergeIdenticalTvars(st)
+      KFun(canon)
+    }
+
+  private def mergeIdenticalTvars(st: StackType): StackType =
+    val tvGen = KTypeVar.typeVarGenerator()
+    val identicalTVars = mutable.Map[String, KTypeVar]()
+    TySubst {
+      case tvar: KTypeVar => identicalTVars.getOrElseUpdate(tvar.name, tvGen())
+      case t => t
+    }.substStackType(st).simplify
 
 
   def doValidation(env: TypingScope)(ast: KStatement): Either[SigiTypeError, TypedStmt] = {

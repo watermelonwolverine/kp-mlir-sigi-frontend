@@ -35,6 +35,7 @@ package ast {
   /** The result of parsing a type. Some of the components may be unresolved. */
   sealed trait TypeSpec extends Positional
   case class TypeCtor(name: String, tyargs: List[TypeSpec] = Nil) extends TypeSpec
+  case class TypeVar(name: String) extends TypeSpec
   case class FunType(consumes: List[TypeSpec], produces: List[TypeSpec]) extends TypeSpec
 
   sealed trait KExpr extends KNode {
@@ -70,6 +71,7 @@ package ast {
     private def dty: Parser[TypeSpec] =
       id ~ tyArgs.? ^^ { case id ~ tyargs => TypeCtor(id.name, tyargs.getOrElse(Nil)).setPos(id.pos) }
         | LPAREN ~> funTy <~ RPAREN // funtype
+        | accept("type variable", { case t: TVAR => TypeVar(t.name).setPos(t.pos) })
 
     // note that the normal sigi grammar uses angle brackets
     // todo maybe use OCaml postfix syntax for type ctors

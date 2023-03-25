@@ -101,7 +101,7 @@ package dumpmlir {
       println(s"}")
     }
 
-    def renderOp(op: SigiDialectOp, comment: String = ""): Unit = {
+    private def renderOp(op: SigiDialectOp, comment: String = ""): Unit = {
       op match
         case op: MPopOp =>
           println(s"${op.outEnv}, ${op.outVal} = sigi.pop ${op.inEnv}: ${mlirType(op.ty)} $comment")
@@ -155,8 +155,8 @@ package dumpmlir {
               val errId = envIdGen.next()
               println(s"$errId = sigi.error $envId, {msg=\"undefined name '$name'\"}")
 
+        // builtin arithmetic
         case TFunApply(StackType(List(a, b), List(c)), name@("+" | "*" | "/" | "%")) =>
-          // builtin arithmetic
           val pop0 = new MPopOp(a, envIdGen, valIdGen)
           val pop1 = new MPopOp(b, envIdGen, valIdGen)
 
@@ -169,7 +169,9 @@ package dumpmlir {
           val pushBack = new MPushOp(c, envIdGen, result)
           renderOp(pushBack)
 
-        case TFunApply(_, _) => ???
+        // todo general case of function calls.
+        //  do we need to monomorphise generic calls?
+        case TFunApply(ty, name) => ???
         case TPushQuote(term) =>
           val quoteSym = quoteIdGen.next()
           val cstId = valIdGen.next()
