@@ -16,7 +16,7 @@ class TypeInfSpec extends AnyFunSuite {
 
       val result: Either[KittenError, StackType] = for {
         parsed <- ast.KittenParser.parseExpr(term)
-        typed <- types.assignType(Env.Default.bindingTypes)(parsed)
+        typed <- types.assignType(Env.Default.toTypingScope)(parsed)
       } yield typed.stackTy
 
       assertResult(Right(ty))(result.map(_.toString))

@@ -1,0 +1,7 @@
+
+define double(int -> int): dup (+);; # 1 (<<)
+
+(2 double double == 8) assert;;      # 2
+
+
+

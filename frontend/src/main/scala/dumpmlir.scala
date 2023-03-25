@@ -14,6 +14,8 @@ import scala.collection.mutable
 
 package dumpmlir {
 
+  import scala.io.Source
+
   sealed trait MlirValue {
 
   }
@@ -60,6 +62,16 @@ package dumpmlir {
       case KInt => value.toString
       case KBool => value.toString
       case KString => s"\"$value\""
+
+    def dumpFunction(funDef: TFunDef): Unit = {
+      val TFunDef(name, ty, body) = funDef
+
+      out.println(s" // $name: $ty")
+      out.println(s"fun @$name(${envIdGen.cur}: !sigi.env) -> !sigi.env {")
+      this.dumpAst(body)
+      out.println(s"}")
+    }
+
 
     /**
       * Contract: before this fun is invoked, the [[envIdGen]] is the ID of the last environment.
@@ -160,26 +172,39 @@ package dumpmlir {
   def dumpAst(out: PrintStream)(t: TypedStmt): Unit = {
 
     t match
-      case TFunDef(name, ty, body) => ???
+      case fun: TFunDef =>
+        new MlirBuilder(out).dumpFunction(fun)
       case TExprStmt(e) =>
         new MlirBuilder(out).dumpAst(e)
       case TBlock(stmts) =>
+
         for (st <- stmts) dumpAst(out)(st)
   }
 
-  @main
-  def main(): Unit = {
-    val source = io.Source.stdin.getLines().mkString("\n")
-
-    val env = Env.Default
-    for {
-      parsed <- KittenParser.parseStmt(source)
-      typed <- eval.doValidation(Env.Default)(parsed)
-    } yield {
-      dumpAst(System.out)(typed)
+  def dumpAst(out: PrintStream)(t: TModule): Unit = {
+    for ((_, fun) <- t.functions) {
+      new MlirBuilder(out).dumpFunction(fun)
     }
 
+    t.code match
+      case hd :: _ =>
+        val mainFun = TFunDef("__main__", StackType(), hd)
+        new MlirBuilder(out).dumpFunction(mainFun)
+      case Nil =>
   }
+
+  def doDumpMlir(out: PrintStream)(in: Source): Unit = {
+
+    val env = Env.Default.toTypingScope
+    for {
+      parsed <- KittenParser.parseFile(in)
+      typed <- types.typeFile(env)(parsed)
+    } dumpAst(out)(typed)
+
+  }
+
+  @main
+  def dumpMlirMain(): Unit = doDumpMlir(System.out)(io.Source.stdin)
 
 
 }

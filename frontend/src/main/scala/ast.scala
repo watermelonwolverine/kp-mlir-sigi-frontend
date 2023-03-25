@@ -15,12 +15,17 @@ package ast {
 
   import de.cfaed.kitten.tokens
 
+  import scala.io.Source
+
   /**
     * @author Clément Fournier &lt;clement.fournier@tu-dresden.de&gt;
     */
   sealed trait KNode
 
   // todo positioning, error messages are shit
+
+  case class KFile(block: KBlock)
+
 
   sealed trait KStatement extends KNode
   case class KBlock(stmts: List[KStatement]) extends KStatement
@@ -188,6 +193,11 @@ package ast {
     def parseStmt(code: String): Either[KittenCompilationError, KStatement] = {
       KittenParser(code, statementList).flatMap(e => validate(e).toLeft(e))
     }
+
+    def parseFile(fileContents: Source): Either[KittenCompilationError, KFile] = {
+      KittenParser(fileContents.mkString("\n"), statementList).flatMap(e => validate(e).toLeft(KFile(e)))
+    }
+
 
   }
 

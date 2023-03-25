@@ -12,10 +12,11 @@ class EvalSpec extends AnyFunSuite {
   inline def checkResult(term: String, stack: List[KValue]): Unit = {
     test(s"$term should result in stack: $stack") {
 
+      val env = Env.Default
       val result: Either[KittenError, Env] = for {
         parsed <- ast.KittenParser.parseExpr(term)
-        typed <- types.assignType(Env.Default.bindingTypes)(parsed)
-        env <- eval.eval(typed)(Env.Default)
+        typed <- types.assignType(env.toTypingScope)(parsed)
+        env <- eval.eval(typed)(env)
       } yield env
 
       assertResult(Right(stack))(result.right.map(_.stack))

@@ -15,6 +15,7 @@ package types {
   import de.cfaed.kitten.{types, withFilter}
 
   import java.util
+  import scala.collection.mutable.ListBuffer
 
 
   /** Typed tree. */
@@ -23,6 +24,10 @@ package types {
   case class TFunDef(name: String, ty: StackType, body: TypedExpr) extends TypedStmt
   case class TExprStmt(e: TypedExpr) extends TypedStmt
   case class TBlock(stmts: List[TypedStmt]) extends TypedStmt
+  case class TModule(
+                      functions: Map[String, TFunDef],
+                      code: List[TypedExpr]
+                    )
 
   sealed trait TypedExpr extends TypedTree {
     def stackTy: StackType
@@ -387,15 +392,36 @@ package types {
           case _ => Some(KittenTypeError.mismatch(a, b))
   }
 
-  private[types] class TypingScope(private val bindings: BindingTypes, private[types] val ctx: TypingCtx) {
+  type BindingTypes = Map[String, KDataType]
+  class TypingScope private(private[types] val bindings: BindingTypes,
+                            private val typesInScope: Map[String, datamodel.TypeDescriptor],
+                            private[types] val ctx: TypingCtx) {
+
+
     def addBindings(names: BindingTypes): TypingScope =
       new TypingScope(
         bindings = this.bindings ++ names,
+        typesInScope = this.typesInScope,
         ctx = this.ctx
       )
 
-    def typeOf(name: String): Either[KittenTypeError, KDataType] =
-      bindings.get(name).toRight(KittenTypeError.undef(name))
+    def addTypeInScope(moreTypes: IterableOnce[(String, datamodel.TypeDescriptor)]): TypingScope =
+      new TypingScope(
+        bindings = this.bindings,
+        typesInScope = this.typesInScope ++ moreTypes,
+        ctx = this.ctx
+      )
+
+    def typeOf(termName: String): Either[KittenTypeError, KDataType] =
+      bindings.get(termName).toRight(KittenTypeError.undef(termName))
+
+    def resolveType(typeName: String): Either[KittenTypeError, datamodel.TypeDescriptor] =
+      typesInScope.get(typeName).toRight(KittenTypeError.undef(typeName))
+
+  }
+  object TypingScope {
+    def apply(varNs: BindingTypes, typeNs: Map[String, datamodel.TypeDescriptor]): TypingScope =
+      new TypingScope(varNs, typeNs, TypingCtx())
   }
 
 
@@ -417,13 +443,69 @@ package types {
         case st => Left(KittenTypeError.cannotBeListItem(st))
       })
 
-  type BindingTypes = Map[String, KDataType]
+  def typeFile(env: TypingScope)(file: KFile): Either[KittenTypeError, TModule] = {
+    doValidation(env)(file.block).map {
+      case TBlock(stmts) =>
+        val typedFuns: Map[String, TFunDef] = stmts.collect { case fun@TFunDef(name, _, _) => (name, fun) }.toMap
+        val exprs = stmts.collect { case TExprStmt(e) => e }
+        TModule(functions = typedFuns, code = exprs)
+    }
+  }
+
+
+  def resolveType(env: TypingScope)(t: TypeSpec): Either[KittenTypeError, KDataType] = t match
+    case TypeCtor(name, tyargs) => env.resolveType(name).flatMap {
+      case datamodel.TypeParm(tv) =>
+        if tyargs.isEmpty
+        then Right(tv)
+        else Left(KittenTypeError(s"Type parameter $name cannot have type arguments"))
+      case typeDesc =>
+        if typeDesc.tparms.lengthCompare(tyargs) != 0 then
+          Left(KittenTypeError(s"Expected ${typeDesc.tparms.length} type arguments, got ${tyargs.length}"))
+        else (name, tyargs) match
+          case ("List", List(item)) => resolveType(env)(item).map(KList.apply)
+          case ("int", Nil) => Right(KInt)
+          case ("str", Nil) => Right(KString)
+          case ("bool", Nil) => Right(KBool)
+          case _ => ??? // todo create user type
+    }
+
+    case ft: FunType => resolveFunType(env)(ft)
+
+  def resolveFunType(env: TypingScope)(t: FunType): Either[KittenTypeError, KFun] =
+    val FunType(tparms, consumes, produces) = t
+    val tvGen = KTypeVar.typeVarGenerator()
+    val fullEnv = env.addTypeInScope(tparms.map(name => (name, datamodel.TypeParm(tvGen()))))
+    for {
+      cs <- consumes.map(resolveType(fullEnv)).flattenList
+      ps <- produces.map(resolveType(fullEnv)).flattenList
+    } yield KFun(StackType(consumes = cs, produces = ps))
+
+
+  def doValidation(env: TypingScope)(ast: KStatement): Either[KittenTypeError, TypedStmt] = {
+    ast match
+      case KBlock(stmts) =>
+
+        val fileEnv = stmts.collect {
+          case KFunDef(name, ty, _) => resolveFunType(env)(ty).map((name, _))
+        }.flattenList.map(_.toMap).map(env.addBindings)
+
+        fileEnv.flatMap(env => stmts.map(doValidation(env)).flattenList.map(TBlock.apply))
+
+      case KExprStatement(e) => types.assignType(env)(e).map(TExprStmt.apply)
+      case KFunDef(name, ty, body) =>
+        for {
+          // todo should unify the type of the body and the type of the signature
+          // todo should defer type checking of the body
+          KFun(stackTy) <- types.resolveFunType(env)(ty)
+          typedBody <- types.assignType(env)(body)
+        } yield TFunDef(name, stackTy, typedBody)
+  }
+
 
   /** Turn a [[KExpr]] into a [[TypedExpr]] by performing type inference. */
-  def assignType(bindings: BindingTypes)(node: KExpr): Either[KittenTypeError, TypedExpr] =
-    val ctx = TypingCtx()
-    val scope = TypingScope(bindings, ctx)
-    assignTypeRec(scope)(node).map(_._1).map(ctx.ground)
+  def assignType(env: TypingScope)(node: KExpr): Either[KittenTypeError, TypedExpr] =
+    assignTypeRec(env)(node).map(_._1).map(env.ctx.ground)
 
   private def assignTypeRec(scope: TypingScope)(node: KExpr): Either[KittenTypeError, (TypedExpr, TypingScope)] = node match
     case PushPrim(ty, v) => Right((TPushPrim(ty, v), scope))

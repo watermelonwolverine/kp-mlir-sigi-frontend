@@ -30,7 +30,7 @@ package eval {
 
       val result: Either[KittenError, Env] = for {
         parsed <- KittenParser.parseStmt(line)
-        typed <- doValidation(env)(parsed)
+        typed <- doValidation(env.toTypingScope)(parsed)
         env2 <- eval(typed)(env)
       } yield {
         showSomethingNice(env, env2)(typed)
@@ -51,49 +51,6 @@ package eval {
     doRepl(scanner.readLine(), Env.Default.copy(vars = Env.Default.vars ++ builtins.ReplBuiltins))
   }
 
-
-  def doValidation(env: Env)(ast: KStatement): Either[KittenError, TypedStmt] = {
-    ast match
-      case KBlock(stmts) =>
-        // todo collect types declared in the block
-        //   collect functions declared in the block
-        stmts.map(doValidation(env)).flattenList.map(TBlock.apply)
-      case KExprStatement(e) => types.assignType(env.bindingTypes)(e).map(TExprStmt.apply)
-      case KFunDef(name, ty, body) =>
-        def resolveType(typesInScope: Map[String, TypeDescriptor])(t: TypeSpec): Either[KittenTypeError, KDataType] = t match
-          case TypeCtor(name, tyargs) => typesInScope.get(name) match
-            case Some(datamodel.TypeParm(tv)) =>
-              if tyargs.nonEmpty then Left(KittenTypeError(s"Type parameter $name cannot have type arguments"))
-              else Right(tv)
-            case Some(typeDesc) =>
-              if typeDesc.tparms.lengthCompare(tyargs) != 0 then
-                Left(KittenTypeError(s"Expected ${typeDesc.tparms.length} type arguments, got ${tyargs.length}"))
-              else (name, tyargs) match
-                case ("List", List(item)) => resolveType(typesInScope)(item).map(KList.apply)
-                case ("int", Nil) => Right(KInt)
-                case ("str", Nil) => Right(KString)
-                case ("bool", Nil) => Right(KBool)
-                case _ => ??? // todo create user type
-            case None => Left(KittenTypeError(s"Undefined type: $name"))
-
-          case ft: FunType => resolveFunType(typesInScope)(ft)
-
-        def resolveFunType(env: Map[String, TypeDescriptor])(t: FunType): Either[KittenTypeError, KFun] =
-          val FunType(tparms, consumes, produces) = t
-          val tvGen = KTypeVar.typeVarGenerator()
-          val typesInScope: Map[String, TypeDescriptor] = env ++ tparms.map(name => (name, TypeParm(tvGen())))
-          for {
-            cs <- consumes.map(resolveType(typesInScope)).flattenList
-            ps <- produces.map(resolveType(typesInScope)).flattenList
-          } yield KFun(StackType(consumes = cs, produces = ps))
-
-        for {
-          // todo should unify the type of the body and the type of the signature
-          // todo should defer type checking of the body
-          KFun(stackTy) <- resolveFunType(env.typesInScope)(ty)
-          typedBody <- types.assignType(env.bindingTypes)(body)
-        } yield TFunDef(name, stackTy, typedBody)
-  }
 
 
   type EvalResult = Either[KittenEvalError, Env]
@@ -140,6 +97,8 @@ package eval {
     def bindingTypes: types.BindingTypes = vars.map((k, v) => (k, v.dataType))
 
     export typesInScope.get as getType
+    
+    def toTypingScope: TypingScope = TypingScope(bindingTypes, typesInScope)
   }
 
   object Env {
