@@ -2,13 +2,13 @@
 
 package de.cfaed.sigi
 
-import scala.annotation.tailrec
-import scala.util.matching.Regex
-import scala.util.parsing.combinator.{PackratParsers, Parsers, RegexParsers}
-import scala.util.parsing.input.{NoPosition, Position, Reader}
-
 
 package ast {
+
+  import scala.annotation.tailrec
+  import scala.util.matching.Regex
+  import scala.util.parsing.combinator.{PackratParsers, Parsers, RegexParsers}
+  import scala.util.parsing.input.{NoPosition, Position, Reader, Positional}
 
   import tokens.*
   import types.{KDataType, KFun, KPrimitive, StackType}
@@ -20,9 +20,7 @@ package ast {
   /**
     * @author Clément Fournier &lt;clement.fournier@tu-dresden.de&gt;
     */
-  sealed trait KNode
-
-  // todo positioning, error messages are shit
+  sealed trait KNode extends Positional
 
   case class KFile(funs: List[KFunDef], mainExpr: KExpr)
 
@@ -30,12 +28,14 @@ package ast {
   sealed trait KStatement extends KNode
   case class KBlock(stmts: List[KStatement]) extends KStatement
   case class KFunDef(name: String, ty: FunType, body: KExpr) extends KStatement
-  case class KExprStatement(e: KExpr) extends KStatement
+  case class KExprStatement(e: KExpr) extends KStatement {
+    setPos(e.pos)
+  }
 
   /** The result of parsing a type. Some of the components may be unresolved. */
-  sealed trait TypeSpec
-  case class TypeCtor(name: String, tyargs: List[TypeSpec]=Nil) extends TypeSpec
-  case class FunType(typarms: List[String], consumes: List[TypeSpec], produces: List[TypeSpec]) extends TypeSpec
+  sealed trait TypeSpec extends Positional
+  case class TypeCtor(name: String, tyargs: List[TypeSpec] = Nil) extends TypeSpec
+  case class FunType(consumes: List[TypeSpec], produces: List[TypeSpec]) extends TypeSpec
 
   sealed trait KExpr extends KNode {
     override def toString: String = this match
@@ -47,15 +47,13 @@ package ast {
       case Quote(term) => s"{ $term }"
   }
 
-  case class Chain(a: KExpr, b: KExpr) extends KExpr
+  case class Chain(a: KExpr, b: KExpr) extends KExpr 
   case class PushPrim[T](ty: KPrimitive[T], value: T) extends KExpr
   case class PushList(items: List[KExpr]) extends KExpr
-  object PushPrim {
-    val PushTrue: PushPrim[Boolean] = PushPrim(types.KBool, true)
-    val PushFalse: PushPrim[Boolean] = PushPrim(types.KBool, false)
-  }
   case class FunApply(name: String) extends KExpr
-  case class Quote(term: KExpr) extends KExpr
+  case class Quote(term: KExpr) extends KExpr {
+    setPos(term.pos)
+  }
   case class NameTopN(names: List[String]) extends KExpr {
     def stackType: StackType = StackType.generic(newTVar => {
       StackType(consumes = names.map(_ => newTVar()))
@@ -70,7 +68,7 @@ package ast {
       LBRACE ~> (exprSeq | accept("operator", { case OP(n) => FunApply(n) })) <~ RBRACE ^^ Quote.apply
 
     private def dty: Parser[TypeSpec] =
-      id ~ tyArgs.? ^^ { case name ~ tyargs => TypeCtor(name, tyargs.getOrElse(Nil)) }
+      id ~ tyArgs.? ^^ { case id ~ tyargs => TypeCtor(id.name, tyargs.getOrElse(Nil)).setPos(id.pos) }
         | LPAREN ~> funTy <~ RPAREN // funtype
 
     // note that the normal sigi grammar uses angle brackets
@@ -78,11 +76,11 @@ package ast {
     //  although maybe using familiar looking generic types makes it look more familiar.
     // todo maybe remove type param clauses, they can be defined implicitly
     private def tyArgs: Parser[List[TypeSpec]] = LBRACKET ~> rep1sep(dty, COMMA) <~ RBRACKET
-    private def tyParms: Parser[List[String]] = LBRACKET ~> rep1sep(id, COMMA) <~ RBRACKET
+    // todo currently not possible to write a generic type explicitly.
 
     private def funTy: Parser[FunType] =
-      tyParms.? ~ repsep(dty, COMMA) ~ ARROW ~ repsep(dty, COMMA) ^^ {
-        case typarms ~ consumes ~ _ ~ produces => FunType(typarms.getOrElse(Nil), consumes, produces)
+      repsep(dty, COMMA) ~ ARROW ~ repsep(dty, COMMA) ^^ {
+        case consumes ~ _ ~ produces => FunType(consumes, produces)
       }
 
     private def inParens[P](p: Parser[P]): Parser[P] = LPAREN ~> p <~ RPAREN
@@ -90,14 +88,14 @@ package ast {
     private def funDef: Parser[KFunDef] =
     // note that the normal sigi grammar does not use a semi
       DEFINE ~> id ~ inParens(funTy) ~ COLON ~ exprSeq <~ PHAT_SEMI ^^ {
-        case name ~ ty ~ _ ~ body => KFunDef(name, ty, body)
+        case id ~ ty ~ _ ~ body => KFunDef(id.name, ty, body).setPos(id.pos)
       }
 
     private def parexpr = LPAREN ~> exprSeq <~ RPAREN
 
-    private def opAsFunApply = accept("operator", { case OP(n) => FunApply(n) })
-    private def id: Parser[String] = accept("identifier", { case ID(n) => n })
-    private def identAsFunApply = id ^^ FunApply.apply
+    private def opAsFunApply = accept("operator", { case op: OP => FunApply(op.opName).setPos(op.pos) })
+    private def id: Parser[ID] = accept("identifier", { case id: ID => id })
+    private def identAsFunApply = id ^^ { id => FunApply(id.name).setPos(id.pos) }
 
     private def ifelse: Parser[KExpr] =
       (IF ~> parexpr.? ~ thunk
@@ -117,21 +115,21 @@ package ast {
       }
 
     private def primary: Parser[KExpr] =
-      TRUE ^^^ PushPrim.PushTrue
-        | FALSE ^^^ PushPrim.PushFalse
+      TRUE ^^ { tok => PushPrim(types.KBool, true).setPos(tok.pos) }
+        | FALSE ^^ { tok => PushPrim(types.KBool, false).setPos(tok.pos) }
         | identAsFunApply
-        | accept("number", { case NUMBER(v) => PushPrim(types.KInt, v) })
-        | accept("string", { case STRING(v) => PushPrim(types.KString, v) })
+        | accept("number", { case n@NUMBER(v) => PushPrim(types.KInt, v).setPos(n.pos) })
+        | accept("string", { case s@STRING(v) => PushPrim(types.KString, v).setPos(s.pos) })
         | BACKSLASH ~> (opAsFunApply | identAsFunApply) ^^ Quote.apply
-        | (LBRACKET ~> repsep(exprSeq, COMMA) <~ RBRACKET ^^ PushList.apply)
+        | (LBRACKET ~ repsep(exprSeq, COMMA) <~ RBRACKET ^^ { case bracket ~ list => PushList(list).setPos(bracket.pos) })
         | (LPAREN ~> (exprSeq | opAsFunApply) <~ RPAREN)
         | thunk
-        | (ARROW ~> rep1sep(accept("identifier", { case ID(name) => name }), COMMA) <~ SEMI ^^ NameTopN.apply)
+        | (ARROW ~ rep1sep(id, COMMA) <~ SEMI ^^ { case arrow ~ ids => NameTopN(ids.map(_.name)).setPos(arrow.pos) })
         | ifelse
 
     private def unary: Parser[KExpr] =
       (OP("-") | OP("+") | OP("~")).? ~ primary ^^ {
-        case Some(OP(op)) ~ e => Chain(e, FunApply("unary_" + op))
+        case Some(op: OP) ~ e => Chain(e, FunApply("unary_" + op.opName).setPos(op.pos))
         case None ~ e => e
       }
 
@@ -139,7 +137,7 @@ package ast {
                            opParser: Parser[KToken]): Parser[KExpr] =
       lowerPrecParser ~ rep(opParser ~ lowerPrecParser) ^^ {
         case e1 ~ list => list.foldLeft(e1) {
-          case (a, OP(op) ~ b) => Chain(Chain(a, b), FunApply(op))
+          case (a, (op: OP) ~ b) => Chain(Chain(a, b), FunApply(op.opName).setPos(op.pos)).setPos(op.pos)
         }
       }
 
@@ -166,10 +164,10 @@ package ast {
     def apply[T](source: String, parser: Parser[T]): Either[SigiParseError, T] = {
       val reader = new KTokenScanner(source)
       parser(reader) match {
-        case NoSuccess(msg, _) => Left(SigiParseError(msg))
+        case NoSuccess(msg, input) => Left(SigiParseError(msg, input.pos))
         case Success(result, input) =>
           if (input.atEnd) Right(result)
-          else Left(SigiParseError(s"Unparsed tokens: ${source.substring(math.max(0, input.pos.column - 1))}"))
+          else Left(SigiParseError(s"Unparsed tokens: ${source.substring(math.max(0, input.pos.column - 1))}", input.pos))
       }
     }
 
@@ -200,8 +198,8 @@ package ast {
       SigiParser(code, statementList).flatMap(e => validate(e).toLeft(e))
     }
 
-    def parseFile(fileContents: Source): Either[SigiCompilationError, KFile] = {
-      SigiParser(fileContents.mkString("\n"), file).flatMap(file => {
+    def parseFile(fileContents: String): Either[SigiCompilationError, KFile] = {
+      SigiParser(fileContents, file).flatMap(file => {
         val errors = validate(file)
         if errors.isEmpty
         then Right(file)

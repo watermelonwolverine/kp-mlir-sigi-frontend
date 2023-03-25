@@ -16,10 +16,11 @@ package types {
 
   import java.util
   import scala.collection.mutable.ListBuffer
+  import scala.util.parsing.input.Positional
 
 
   /** Typed tree. */
-  sealed trait TypedTree
+  sealed trait TypedTree extends Positional
   sealed trait TypedStmt extends TypedTree
   case class TFunDef(name: String, ty: StackType, body: TypedExpr) extends TypedStmt
   case class TExprStmt(e: TypedExpr) extends TypedStmt
@@ -239,7 +240,7 @@ package types {
       case a => a
 
     def substTerm(te: TypedExpr): TypedExpr =
-      te match
+      val res = te match
         case TChain(stackTy, a, b) =>
           val sta = substTerm(a)
           val stb = substTerm(b)
@@ -249,6 +250,7 @@ package types {
         case TFunApply(stackTy, name) => TFunApply(substStackType(stackTy), name)
         case TPushQuote(term) => TPushQuote(substTerm(term))
         case TNameTopN(stackTy, names) => TNameTopN(substStackType(stackTy), names)
+      res.setPos(te.pos)
 
   }
 
@@ -434,7 +436,7 @@ package types {
           either.flatMap(leftT => {
             val rightT = scope.ctx.mapToIvars(newT.stackTy)
             scope.ctx.unify(leftT, rightT).toLeft(leftT)
-              .left.map { _ => SigiTypeError.mismatch(leftT, newT.stackTy) }
+              .left.map { _ => SigiTypeError.mismatch(leftT, newT.stackTy).setPos(newT.pos) }
           })
       }
 
@@ -448,16 +450,20 @@ package types {
       case TBlock(funs) =>
         val typedFuns: Map[String, TFunDef] = funs.collect { case fun@TFunDef(name, _, _) => (name, fun) }.toMap
         val fileEnv = env.addBindings(typedFuns.map { case (name, fun) => (name, KFun(fun.ty)) })
-        // todo make sure expr has proper stack type (consumes nothing)
         doValidation(fileEnv)(KExprStatement(file.mainExpr))
-          .flatMap { case TExprStmt(te) => checkTypeConforms(StackType())(te).toLeft(te) }
+          .flatMap { case TExprStmt(te) => checkMainExprType(te).toLeft(te) }
           .map(te => TModule(functions = typedFuns, mainExpr = te))
     }
   }
 
+  def checkMainExprType(term:TypedExpr): Option[SigiTypeError] =
+    if term.stackTy.simplify.consumes.nonEmpty
+    then Some(SigiTypeError.mainExprConsumesElements(term.stackTy).setPos(term.pos))
+    else None
+
   def checkTypeConforms(expectedTy: StackType)(term: TypedExpr): Option[SigiTypeError] =
-    if term.stackTy != expectedTy
-    then Some(SigiTypeError.mismatch(expectedTy, term.stackTy))
+    if term.stackTy != expectedTy // todo both types should be unifiable, not equal
+    then Some(SigiTypeError.mismatch(term.stackTy, expectedTy).setPos(term.pos))
     else None
 
   def resolveType(env: TypingScope)(t: TypeSpec): Either[SigiTypeError, KDataType] = t match
@@ -480,9 +486,9 @@ package types {
     case ft: FunType => resolveFunType(env)(ft)
 
   def resolveFunType(env: TypingScope)(t: FunType): Either[SigiTypeError, KFun] =
-    val FunType(tparms, consumes, produces) = t
+    val FunType(consumes, produces) = t
     val tvGen = KTypeVar.typeVarGenerator()
-    val fullEnv = env.addTypeInScope(tparms.map(name => (name, datamodel.TypeParm(tvGen()))))
+    val fullEnv = env // todo env.addTypeInScope(tparms.map(name => (name, datamodel.TypeParm(tvGen()))))
     for {
       cs <- consumes.map(resolveType(fullEnv)).flattenList
       ps <- produces.map(resolveType(fullEnv)).flattenList
@@ -497,16 +503,16 @@ package types {
           case KFunDef(name, ty, _) => resolveFunType(env)(ty).map((name, _))
         }.flattenList.map(_.toMap).map(env.addBindings)
 
-        fileEnv.flatMap(env => stmts.map(doValidation(env)).flattenList.map(TBlock.apply))
+        fileEnv.flatMap(env => stmts.map(doValidation(env)).flattenList.map(TBlock.apply).map(_.setPos(ast.pos)))
 
-      case KExprStatement(e) => types.assignType(env)(e).map(TExprStmt.apply)
+      case KExprStatement(e) => types.assignType(env)(e).map(TExprStmt.apply).map(_.setPos(ast.pos))
       case KFunDef(name, ty, body) =>
         for {
           // todo should unify the type of the body and the type of the signature
           // todo should defer type checking of the body
           KFun(stackTy) <- types.resolveFunType(env)(ty)
           typedBody <- types.assignType(env)(body)
-        } yield TFunDef(name, stackTy, typedBody)
+        } yield TFunDef(name, stackTy, typedBody).setPos(ast.pos)
   }
 
 
@@ -515,14 +521,16 @@ package types {
     assignTypeRec(env)(node).map(_._1).map(env.ctx.ground)
 
   private def assignTypeRec(scope: TypingScope)(node: KExpr): Either[SigiTypeError, (TypedExpr, TypingScope)] = node match
-    case PushPrim(ty, v) => Right((TPushPrim(ty, v), scope))
+    case PushPrim(ty, v) => Right((TPushPrim(ty, v).setPos(node.pos), scope))
     case PushList(items) =>
-      for {
+      val result = for {
         trees <- items.map(assignTypeRec(scope)).flattenList
         listTy <- inferListType(scope)(trees.map(_._1))
-      } yield (TPushList(listTy, trees.map(_._1)), scope)
+      } yield (TPushList(listTy, trees.map(_._1)).setPos(node.pos), scope)
 
-    case Quote(term) => assignTypeRec(scope)(term).map(t => (TPushQuote(t._1), scope))
+      result.left.map(_.setPos(node.pos))
+
+    case Quote(term) => assignTypeRec(scope)(term).map(t => (TPushQuote(t._1).setPos(node.pos), scope))
     case NameTopN(names) =>
       // this is the most generic type for this construct: every name has a different tvar
       val genericTy = StackType.generic(newTVar => {
@@ -533,7 +541,7 @@ package types {
       val ivars = withIvars.consumes.asInstanceOf[List[KInferenceVar]]
       // make bindings whose types are the ivars
       val newEnv = scope.addBindings(names.zip(ivars).toMap)
-      Right((TNameTopN(withIvars, names), newEnv))
+      Right((TNameTopN(withIvars, names).setPos(node.pos), newEnv))
 
     case FunApply(name) =>
       @tailrec
@@ -543,9 +551,9 @@ package types {
         case ivar: KInferenceVar if ivar.instantiation != null => typeFunApply(ivar.instantiation)
         case t => TFunApply(StackType.pushOne(t), name)
 
-      scope.typeOf(name).map(typeFunApply).map((_, scope))
+      scope.typeOf(name).left.map(_.setPos(node.pos)).map(typeFunApply).map(f => (f.setPos(node.pos), scope))
 
-    case e@Chain(left, right) =>
+    case Chain(left, right) =>
       val toIvars = scope.ctx.mapToIvars _
       for {
         (leftTree, leftScope) <- assignTypeRec(scope)(left)
@@ -554,7 +562,7 @@ package types {
           val (ta, tb) = (toIvars(leftTree.stackTy.canonicalize), toIvars(rightTree.stackTy.canonicalize))
 
 
-          scope.ctx.unify(ta.produces, tb.consumes)
+          scope.ctx.unify(ta.produces, tb.consumes).map(_.setPos(node.pos))
             .toLeft({
               val ground = scope.ctx.groundRowVars
               val ta2 = ground.substStackType(ta)
@@ -566,7 +574,7 @@ package types {
 
               StackType(consumes = cons ++ ta2.consumes, produces = prod ++ tb2.produces)
             })
-            .map(st => TChain(st, leftTree, rightTree))
+            .map(st => TChain(st, leftTree, rightTree).setPos(node.pos))
             .map(term => (term, rightScope))
         }
       } yield newEnv

@@ -11,9 +11,10 @@ package tokens {
   import scala.collection.immutable.Seq
   import scala.util.parsing.combinator.lexical.Scanners
   import scala.util.parsing.input.CharSequenceReader
+  import scala.util.parsing.input.Positional
 
 
-  sealed class KToken
+  sealed class KToken extends Positional
 
   case class NUMBER(value: Int) extends KToken
   case class ID(name: String) extends KToken
@@ -88,7 +89,7 @@ package tokens {
         | "define" ^^^ DEFINE
 
     override def token: SigiLexer.Parser[SigiLexer.Token] =
-      keyword | ident | number | punct | op | string 
+      positioned(keyword | ident | number | punct | op | string)
 
     override def whitespace: SigiLexer.Parser[Any] = "\\s*".r
 

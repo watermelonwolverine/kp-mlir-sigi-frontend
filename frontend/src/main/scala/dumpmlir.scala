@@ -82,21 +82,31 @@ package dumpmlir {
       case KBool => value.toString
       case KString => s"\"$value\""
 
+    private var indent = 0
+
+    def println(str: String):Unit = {
+      (0 until indent).foreach { _ => out.print("    ") }
+      out.println(str)
+    }
+
     def dumpFunction(funDef: TFunDef): Unit = {
       val TFunDef(name, ty, body) = funDef
 
-      out.println(s" // $name: $ty")
-      out.println(s"fun @$name(${envIdGen.cur}: !sigi.env) -> !sigi.env {")
+      println(s" // $name: $ty")
+      println(s"func.func @$name(${envIdGen.cur}: !sigi.env) -> !sigi.env {")
+      indent += 1
       this.dumpAst(body)
-      out.println(s"}")
+      println(s"return ${envIdGen.cur}: !sigi.env")
+      indent -= 1
+      println(s"}")
     }
 
     def renderOp(op: SigiDialectOp, comment: String = ""): Unit = {
       op match
         case op: MPopOp =>
-          out.println(s"${op.outEnv}, ${op.outVal} = sigi.pop ${op.inEnv}: ${mlirType(op.ty)} $comment")
+          println(s"${op.outEnv}, ${op.outVal} = sigi.pop ${op.inEnv}: ${mlirType(op.ty)} $comment")
         case op: MPushOp =>
-          out.println(s"${op.outEnv} = sigi.push ${op.inEnv}, ${op.inVal}: ${mlirType(op.ty)} $comment")
+          println(s"${op.outEnv} = sigi.push ${op.inEnv}, ${op.inVal}: ${mlirType(op.ty)} $comment")
     }
 
     /**
@@ -125,7 +135,7 @@ package dumpmlir {
 
           val mlirTy = mlirType(ty)
 
-          out.println(s"$listId = sigi.create_list $args: $mlirTy")
+          println(s"$listId = sigi.create_list $args: $mlirTy")
           renderOp(new MPushOp(ty, envIdGen, listId))
 
         case TPushPrim(ty, value) =>
@@ -133,7 +143,7 @@ package dumpmlir {
           val cstAttr = makeConstAttr(ty, value)
           val mlirTy = mlirType(ty)
 
-          out.println(s" $cstId = sigi.constant $cstAttr: $mlirTy")
+          println(s"$cstId = sigi.constant $cstAttr: $mlirTy")
           renderOp(new MPushOp(ty, envIdGen, cstId))
 
 
@@ -143,7 +153,7 @@ package dumpmlir {
             case Some(valueId) => renderOp(new MPushOp(ty, envIdGen, valueId))
             case None =>
               val errId = envIdGen.next()
-              out.println(s"$errId = sigi.error $envId, {msg=\"undefined name '$name'\"}")
+              println(s"$errId = sigi.error $envId, {msg=\"undefined name '$name'\"}")
 
         case TFunApply(StackType(List(a, b), List(c)), name@("+" | "*" | "/" | "%")) =>
           // builtin arithmetic
@@ -155,7 +165,7 @@ package dumpmlir {
 
           renderOp(pop0)
           renderOp(pop1)
-          out.println(s"$result = sigi.$opName ${pop0.outVal}, ${pop1.outVal}: ${mlirType(c)}")
+          println(s"$result = sigi.$opName ${pop0.outVal}, ${pop1.outVal}: ${mlirType(c)}")
           val pushBack = new MPushOp(c, envIdGen, result)
           renderOp(pushBack)
 
@@ -167,7 +177,7 @@ package dumpmlir {
           val ty = KFun(term.stackTy)
           val mlirTy = mlirType(ty)
 
-          out.println(s"$cstId = sigi.funvalue $quoteSym: $mlirTy")
+          println(s"$cstId = sigi.funvalue $quoteSym: $mlirTy")
           renderOp(new MPushOp(ty, envIdGen, cstId))
 
         case TNameTopN(stackTy, names) =>
@@ -212,7 +222,7 @@ package dumpmlir {
       new MlirBuilder(out).dumpFunction(fun)
     }
 
-    val mainFun = TFunDef("__main__", StackType(), module.mainExpr)
+    val mainFun = TFunDef("__main__", module.mainExpr.stackTy, module.mainExpr)
     new MlirBuilder(out).dumpFunction(mainFun)
   }
 
@@ -220,7 +230,7 @@ package dumpmlir {
 
     val env = Env.Default.toTypingScope
     val res = for {
-      parsed <- SigiParser.parseFile(in)
+      parsed <- SigiParser.parseFile(in.mkString)
       typed <- types.typeFile(env)(parsed)
     } yield dumpAst(out)(typed)
 
@@ -231,6 +241,8 @@ package dumpmlir {
 
   @main
   def dumpMlirMain(): Unit = doDumpMlir(System.out)(io.Source.stdin)
+  @main
+  def dumpMlirMain2(): Unit = doDumpMlir(System.out)(io.Source.fromString("(1+2)"))
 
 
 }

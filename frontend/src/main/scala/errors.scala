@@ -4,38 +4,54 @@ import ast.{KExpr, NameTopN}
 import eval.{Env, KValue}
 import types.*
 
+import scala.util.parsing.input.{Position, Positional}
 
-trait SigiError
-trait SigiCompilationError extends SigiError
+
+sealed class SigiError extends Positional
+class SigiCompilationError extends SigiError
+
 object SigiCompilationError {
   export ListOfErrors.apply as allOf
 }
 
-case class ListOfErrors(lst: List[SigiCompilationError]) extends SigiCompilationError
-case class SigiParseError(msg: String) extends SigiCompilationError
+case class ListOfErrors(val lst: List[SigiCompilationError]) extends SigiCompilationError {
+
+}
+class SigiParseError(val msg: String) extends SigiCompilationError {
+  override def toString: String = s"Parse error: $msg\n" + pos.longString
+}
 
 object SigiParseError {
-  def namesShouldBeUnique(node: NameTopN) = SigiParseError(
-    s"Names should be unique: ${node.names}"
+  def apply(msg: String, loc: Position): SigiParseError = new SigiParseError(msg).setPos(loc)
+  def namesShouldBeUnique(node: NameTopN): SigiParseError = SigiParseError(
+    s"Names should be unique: ${node.names}",
+    node.pos
   )
 }
 case class SigiLexerError(msg: String) extends SigiCompilationError
 
 
-case class SigiTypeError(msg: String) extends SigiCompilationError {
-  var location: KExpr = _
+class SigiTypeError(msg: String) extends SigiCompilationError {
+
+  override def toString: String = s"Type error: $msg\n" + pos.longString
 }
 
 object SigiTypeError {
+
+  def apply(msg: String) = new SigiTypeError(msg)
+
   def undef(name: String): SigiTypeError = SigiTypeError(s"Undefined name '$name'")
-  def mismatch(t1: StackType, t2: StackType): SigiTypeError = SigiTypeError(
-    s"Mismatched stack types: $t1 is not compatible with $t2"
+  def mainExprConsumesElements(stackType: StackType): SigiTypeError = SigiTypeError(
+    s"Main expression should not consume elements from the stack, but its type is ($stackType)"
   )
-  def mismatch(a: KDataType, b: KDataType) = SigiTypeError(
+  def mismatch(actual: StackType, expected: StackType): SigiTypeError = SigiTypeError(
+    s"Mismatched stack types: $actual is not compatible with $expected"
+  )
+  def mismatch(a: KDataType, b: KDataType): SigiTypeError = SigiTypeError(
     s"Mismatched types: $a is not compatible with $b"
   )
-  
-  def cannotUnify(a: List[KStackTypeItem], b: List[KStackTypeItem]) = SigiTypeError(
+
+  def cannotUnify(a: List[KStackTypeItem], b: List[KStackTypeItem]): SigiTypeError = SigiTypeError(
     s"Mismatched types: $a is not compatible with $b"
   )
 
