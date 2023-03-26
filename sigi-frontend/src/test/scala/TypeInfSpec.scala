@@ -36,9 +36,9 @@ class TypeInfSpec extends AnyFunSuite {
   checkType("-> x, y; x y", "'a, 'b -> 'a, 'b")
   checkType("-> x;", "'a ->")
   checkType("-> x, y; y", "'a, 'b -> 'b")
-  checkType("if (true) { 1 } else { 2 }", "-> int")
-  checkType("if { 1 } else { 2 }", "bool -> int")
-  checkType("true if { 1 } else { 2 }", "-> int")
+  checkType("if (true) 1 else 2", "-> int")
+  checkType("if 1 else 2", "bool -> int")
+  checkType("true if 1 else 2", "-> int")
   checkType("{->a,b;b} -> snd; 1 2 snd", "-> int")
 
   checkType("1 2 -> x, y; x y", "-> int, int")

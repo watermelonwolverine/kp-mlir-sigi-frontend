@@ -32,6 +32,6 @@ class EvalSpec extends AnyFunSuite {
   checkResult("2 dup pop", List(VNum(2)))
 
 
-  checkResult("if (true) { 1 } else { 2 }", List(VNum(1)))
+  checkResult("if (true)  1  else  2 ", List(VNum(1)))
   checkResult("[1, 2]", List(VList(types.KList(types.KInt), List(VNum(1), VNum(2)))))
 }

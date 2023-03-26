@@ -386,7 +386,7 @@ package types {
           if a.instantiation != null then
             return unify(a.instantiation, b)
 
-          assert(!b.contains(a))
+          assert(!b.contains(a), s"$b contain $a")
           // println(s"$a := $b")
           a.instantiation = b
           None
