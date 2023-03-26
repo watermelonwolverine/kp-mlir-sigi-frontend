@@ -50,7 +50,7 @@ package emitmlir {
   // helper type that represents a push operation
   sealed trait SigiDialectOp
 
-  class MPopOp(val ty: KStackTypeItem,
+  class MPopOp(val ty: KStackTypeItem | String,
                envIdGen: IdGenerator[MlirIdent],
                valIdGen: IdGenerator[MlirIdent]) extends SigiDialectOp {
     val inEnv: MlirIdent = envIdGen.cur
@@ -59,7 +59,7 @@ package emitmlir {
     val outVal: MlirIdent = valIdGen.next()
   }
 
-  class MPushOp(val tyStr: String,
+  class MPushOp(val ty: KStackTypeItem | String,
                 envIdGen: IdGenerator[MlirIdent],
                 val inVal: MlirIdent) extends SigiDialectOp {
     val inEnv: MlirIdent = envIdGen.cur
@@ -117,17 +117,22 @@ package emitmlir {
 
     private def renderOp(op: SigiDialectOp, comment: String = ""): Unit = {
       val realComment = if comment.isEmpty then "" else s" // $comment"
+
+      def typeToStr(t: String | KStackTypeItem) = t match
+        case s: String => s
+        case t: KStackTypeItem => mlirType(t)
+
       op match
         case op: MPopOp =>
-          println(s"${op.outEnv}, ${op.outVal} = sigi.pop ${op.inEnv}: ${mlirType(op.ty)}$realComment")
+          println(s"${op.outEnv}, ${op.outVal} = sigi.pop ${op.inEnv}: ${typeToStr(op.ty)}$realComment")
         case op: MPushOp =>
-          println(s"${op.outEnv} = sigi.push ${op.inEnv}, ${op.inVal}: ${op.tyStr}$realComment")
+          println(s"${op.outEnv} = sigi.push ${op.inEnv}, ${op.inVal}: ${typeToStr(op.ty)}$realComment")
     }
 
     private def renderPush(ty: KStackTypeItem,
                            envIdGen: IdGenerator[MlirIdent],
                            inVal: MlirIdent,
-                           comment:String = ""): Unit = renderOp(new MPushOp(mlirType(ty), envIdGen, inVal), comment)
+                           comment:String = ""): Unit = renderOp(new MPushOp(ty, envIdGen, inVal), comment)
 
     /**
       * Contract: before this fun is invoked, the [[envIdGen]] is the ID of the last environment.
@@ -213,8 +218,14 @@ package emitmlir {
           renderPush(b, envIdGen, popb.outVal)
           renderPush(a, envIdGen, popa.outVal)
 
-        // todo general case of function calls.
-        //  do we need to monomorphise generic calls?
+        case TFunApply(_, "apply") =>
+          val pop = new MPopOp(MlirBuilder.ClosureT, envIdGen, valIdGen)
+          renderOp(pop)
+          val nextEnv = envIdGen.next()
+          println(s"$nextEnv = closure.call ${pop.outVal} : ${MlirBuilder.ClosureT}")
+
+        // general case of function calls.
+        //  todo monomorphise generic calls
         case TFunApply(ty, name) =>
           // assume the function has been emitted with the given name (this is after monomorphisation)
 
@@ -222,15 +233,16 @@ package emitmlir {
           val resultEnv = envIdGen.next()
           println(s"$resultEnv = func.call @$escapedName($envId) : $TargetFunType")
 
+
         case TPushQuote(term) =>
           val cstId = valIdGen.next()
 
-          val push = new MPushOp("!sigi.closure", envIdGen, cstId)
+          val push = new MPushOp(MlirBuilder.ClosureT, envIdGen, cstId)
           val closureEnv = envIdGen.next()
-          println(s"$cstId = sigi.closure($closureEnv : !sigi.env) -> !sigi.env { // ${term.stackTy}")
+          println(s"$cstId = closure.box ($closureEnv : !sigi.env) -> !sigi.env { // ${term.stackTy}")
           indent += 1
           emitExpr(term)
-          println(s"sigi.return ${envIdGen.cur}: !sigi.env")
+          println(s"closure.return ${envIdGen.cur}: !sigi.env")
           indent -= 1
           println(s"}")
           renderOp(push)
@@ -245,6 +257,7 @@ package emitmlir {
 
   object MlirBuilder {
     private val TargetFunType = "!sigi.env -> !sigi.env"
+    private val ClosureT = "!closure.box<!sigi.env -> !sigi.env>"
     private val BuiltinIntOps = Map(
       "+" -> "arith.addi",
       "-" -> "arith.subi",
