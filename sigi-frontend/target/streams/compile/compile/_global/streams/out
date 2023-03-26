@@ -1,0 +1,36 @@
+[0m[[0m[33mwarn[0m] [0m[0m[33m-- [E029] Pattern Match Exhaustivity Warning: /home/clem/Documents/CCC/kp-mlir/frontend/src/main/scala/ast.scala:134:8 [0m[0m
+[0m[[0m[33mwarn[0m] [0m[0m[33m134 |[0m        [33mcase[0m Some(op: OP) ~ e => Chain(e, FunApply([31m"unary_"[0m + op.opName).setPos(op.pos))[0m
+[0m[[0m[33mwarn[0m] [0m[0m    |        [33m^[0m[0m
+[0m[[0m[33mwarn[0m] [0m[0m    |        [33mmatch[0m may not be exhaustive.[0m
+[0m[[0m[33mwarn[0m] [0m[0m    |[0m
+[0m[[0m[33mwarn[0m] [0m[0m    |        It would fail on pattern case: ~(Some(_), _)[0m
+[0m[[0m[33mwarn[0m] [0m[0m[33m-- [E029] Pattern Match Exhaustivity Warning: /home/clem/Documents/CCC/kp-mlir/frontend/src/main/scala/ast.scala:142:10 [0m[0m
+[0m[[0m[33mwarn[0m] [0m[0m[33m142 |[0m          [33mcase[0m (a, (op: OP) ~ b) => Chain(Chain(a, b), FunApply(op.opName).setPos(op.pos)).setPos(op.pos)[0m
+[0m[[0m[33mwarn[0m] [0m[0m    |          [33m^[0m[0m
+[0m[[0m[33mwarn[0m] [0m[0m    |          [33mmatch[0m may not be exhaustive.[0m
+[0m[[0m[33mwarn[0m] [0m[0m    |[0m
+[0m[[0m[33mwarn[0m] [0m[0m    |          It would fail on pattern case: (_, ~(_, _))[0m
+[0m[[0m[33mwarn[0m] [0m[0m[33m-- [E029] Pattern Match Exhaustivity Warning: /home/clem/Documents/CCC/kp-mlir/frontend/src/main/scala/ast.scala:168:12 [0m[0m
+[0m[[0m[33mwarn[0m] [0m[0m[33m168 |[0m      parser(reader) [33mmatch[0m {[0m
+[0m[[0m[33mwarn[0m] [0m[0m    |      [33m^^^^^^^^^^^^^^[0m[0m
+[0m[[0m[33mwarn[0m] [0m[0m    |      [33mmatch[0m may not be exhaustive.[0m
+[0m[[0m[33mwarn[0m] [0m[0m    |[0m
+[0m[[0m[33mwarn[0m] [0m[0m    |      It would fail on pattern case: Failure(_, _), Error(_, _)[0m
+[0m[[0m[33mwarn[0m] [0m[0m[33m-- [E121] Pattern Match Warning: /home/clem/Documents/CCC/kp-mlir/frontend/src/main/scala/eval.scala:81:11 [0m[0m
+[0m[[0m[33mwarn[0m] [0m[0m[33m81 |[0m      [33mcase[0m _ => None[0m
+[0m[[0m[33mwarn[0m] [0m[0m   |           [33m^[0m[0m
+[0m[[0m[33mwarn[0m] [0m[0m   |Unreachable case except for [31mnull[0m (if this is intentional, consider writing [33mcase[0m [31mnull[0m => instead).[0m
+[0m[[0m[33mwarn[0m] [0m[0m[33m-- [E029] Pattern Match Exhaustivity Warning: /home/clem/Documents/CCC/kp-mlir/frontend/src/main/scala/types.scala:454:21 [0m[0m
+[0m[[0m[33mwarn[0m] [0m[0m[33m454 |[0m          .flatMap { [33mcase[0m TExprStmt(te) => checkMainExprType(te).toLeft(te) }[0m
+[0m[[0m[33mwarn[0m] [0m[0m    |                     [33m^[0m[0m
+[0m[[0m[33mwarn[0m] [0m[0m    |[33mmatch[0m may not be exhaustive.[0m
+[0m[[0m[33mwarn[0m] [0m[0m    |[0m
+[0m[[0m[33mwarn[0m] [0m[0m    |It would fail on pattern case: types.TFunDef(_, _, _), types.TBlock(_)[0m
+[0m[[0m[33mwarn[0m] [0m[0m[33m-- [E029] Pattern Match Exhaustivity Warning: /home/clem/Documents/CCC/kp-mlir/frontend/src/main/scala/types.scala:450:6 [0m[0m
+[0m[[0m[33mwarn[0m] [0m[0m[33m450 |[0m      [33mcase[0m TBlock(funs) =>[0m
+[0m[[0m[33mwarn[0m] [0m[0m    |      [33m^[0m[0m
+[0m[[0m[33mwarn[0m] [0m[0m    |[33mmatch[0m may not be exhaustive.[0m
+[0m[[0m[33mwarn[0m] [0m[0m    |[0m
+[0m[[0m[33mwarn[0m] [0m[0m    |It would fail on pattern case: types.TFunDef(_, _, _), types.TExprStmt(_)[0m
+[0m[[0m[33mwarn[0m] [0m[0m6 warnings found[0m
+[0m[[0m[33mwarn[0m] [0m[0m6 warnings found[0m

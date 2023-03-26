@@ -1,0 +1,21 @@
+
+define fib_naive (int -> int): 
+  -> n;
+  if (n <= 1) 1 
+  else (n - 2) fib_naive + (n - 1) fib_naive;;
+
+define fib_tailrec (int -> int):
+  1 1 fib_tailrec_helper;;
+
+define fib_tailrec_helper(int, int, int -> int):
+  -> n, a, b;
+  if (n = 0)   a
+  elif (n = 1) b
+  else          (n - 1) b (a + b) fib_tailrec_helper
+  ;;
+
+
+((20 fib_tailrec) = (20 fib_naive)) show
+
+
+

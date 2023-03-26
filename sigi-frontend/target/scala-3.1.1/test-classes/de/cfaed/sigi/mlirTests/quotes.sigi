@@ -1,0 +1,10 @@
+
+define double(int -> int): 2 (*);;
+
+1 \double apply -> x;
+
+
+
+
+
+
