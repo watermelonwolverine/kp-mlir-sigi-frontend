@@ -575,7 +575,7 @@ package types {
         (leftTree, leftScope) <- assignTypeRec(scope)(left)
         (rightTree, rightScope) <- assignTypeRec(leftScope)(right)
         newEnv <- {
-          val toIvarSubst = scope.ctx.toIvarSubst
+          def toIvarSubst = scope.ctx.toIvarSubst
           val (leftI, rightI) = (toIvarSubst.substTerm(leftTree), toIvarSubst.substTerm(rightTree))
           val (ta, tb) = (toIvarSubst.substStackType(leftI.stackTy.canonicalize), toIvarSubst.substStackType(rightI.stackTy.canonicalize))
 

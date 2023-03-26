@@ -319,9 +319,9 @@ package emitmlir {
   }
 
   @main
-  def dumpMlirMain(): Unit = parseSigiAndEmitMlir(System.out)(io.Source.stdin)
-  @main
-  def testDumping(): Unit = parseSigiAndEmitMlir(System.out)(io.Source.fromString("true == false"))
+  def sigiToMlir(): Unit = parseSigiAndEmitMlir(System.out)(io.Source.stdin)
+//  @main
+//  def testDumping(): Unit = parseSigiAndEmitMlir(System.out)(io.Source.fromString("true == false"))
 
 
 }

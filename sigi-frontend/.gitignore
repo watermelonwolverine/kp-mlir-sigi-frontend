@@ -29,6 +29,7 @@ project/plugins/project/
 .cache
 .lib/
 
+
 ### SBT Patch ###
 .bsp/
 
