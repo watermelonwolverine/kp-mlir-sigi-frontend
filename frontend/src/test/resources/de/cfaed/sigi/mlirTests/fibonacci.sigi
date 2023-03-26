@@ -15,7 +15,7 @@ define fib_tailrec_helper(int, int, int -> int):
   ;;
 
 
-(20 fib_tailrec = 20 fib_naive) show
+((20 fib_tailrec) = (20 fib_naive)) show
 
 
 

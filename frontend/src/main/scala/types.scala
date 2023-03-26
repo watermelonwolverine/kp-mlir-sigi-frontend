@@ -291,7 +291,7 @@ package types {
       }.substDataTy _
 
 
-      def groundTerm(groundDt: KDataType => KDataType): TySubst = new TySubst(groundDt) {
+      def groundSubst(groundDt: KDataType => KDataType = groundImpl): TySubst = new TySubst(groundDt) {
         def groundList(lst: List[KStackTypeItem]): List[KStackTypeItem] =
           lst.flatMap {
             case rivar: KRowIVar =>
@@ -311,17 +311,19 @@ package types {
           ).simplify // notice this simplify
 
       }
-
-      def groundSubst: TySubst = groundTerm(groundImpl)
     }
 
 
     /** Replace inference variables with their instantiation.
       * Uninstantiated variables are replaced by fresh type vars.
       */
-    def ground(te: TypedExpr): TypedExpr = new Ground().groundSubst.substTerm(te)
-    def groundRowVars: TySubst = new Ground().groundTerm(t => t)
-    def groundSubst: TySubst = new Ground().groundSubst
+    def ground(te: TypedExpr): TypedExpr = new Ground().groundSubst().substTerm(te)
+    def groundRowVars: TySubst = new Ground().groundSubst(t => t)
+    // only replace
+    def partialGround: TySubst = new Ground().groundSubst {
+      case ivar: KInferenceVar if ivar.instantiation != null => ivar.instantiation
+      case t => t
+    }
 
     def unify(a: StackType, b: StackType): Option[SigiTypeError] =
       val ac = mapToIvars(a.canonicalize)
@@ -564,7 +566,6 @@ package types {
         case ivar: KInferenceVar if ivar.instantiation != null => typeFunApply(ivar.instantiation)
         case t => TFunApply(StackType.pushOne(t), name)
 
-
       scope.typeOf(name) match
         case Left(err) => Left(err.setPos(node.pos))
         case Right(ty) => Right((typeFunApply(ty).setPos(node.pos), scope))
@@ -592,7 +593,7 @@ package types {
             })
             .map { it =>
               // Here the ground gives a more specific type to the tree branches.
-              val ground = scope.ctx.groundSubst
+              val ground = scope.ctx.partialGround
               TChain(it, ground.substTerm(leftI), ground.substTerm(rightI)).setPos(node.pos)
             }
             .map(term => (term, rightScope))

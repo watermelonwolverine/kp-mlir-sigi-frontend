@@ -23,7 +23,7 @@ class MlirCompilSpec extends AnyFunSuite {
 
       val out = ByteArrayOutputStream()
 
-      dumpmlir.doDumpMlir(PrintStream(out))(io.Source.fromInputStream(source))
+      dumpmlir.parseSigiAndEmitMlir(PrintStream(out))(io.Source.fromInputStream(source))
 
       assertResult(expectedStr)(out.toString().trim)
     }

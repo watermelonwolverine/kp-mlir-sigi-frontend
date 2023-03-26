@@ -22,11 +22,15 @@ package dumpmlir {
 
   }
 
-  case class MlirIdent(prefix: String)(id: Int) extends MlirValue {
+  class MlirIdent(prefix: String)(id: Int) extends MlirValue {
     override def toString: String = "%" + prefix + id
+
   }
-  case class MlirSymbol(prefix: String)(id: Int) extends MlirValue {
-    override def toString: String = "@" + prefix + id
+  class MlirSymbol(prefix: String)(id: Int) extends MlirValue, Comparable[MlirSymbol] {
+    val simpleName: String = prefix + id
+    override def toString: String = "@" + simpleName
+    override def compareTo(o: MlirSymbol): Int = simpleName.compareTo(o.simpleName)
+
   }
 
   class IdGenerator[T](maker: Int => T) {
@@ -36,6 +40,10 @@ package dumpmlir {
     def next(): T = {
       seqNumber += 1
       cur
+    }
+
+    def reset(): Unit = {
+      seqNumber = 0
     }
   }
 
@@ -61,16 +69,22 @@ package dumpmlir {
 
   class MlirBuilder(val out: PrintStream, private var indent: Int = 0) {
     /** Ident of the environment. */
-    private val envIdGen = IdGenerator(MlirIdent("e"))
+    private val envIdGen = IdGenerator(new MlirIdent("e")(_))
     /** Ident for regular values. */
-    private val valIdGen = IdGenerator(MlirIdent(""))
+    private val valIdGen = IdGenerator(new MlirIdent("")(_))
     /** Symbols for quote generation. */
-    private val quoteIdGen = IdGenerator(MlirSymbol("quote"))
+    private val quoteIdGen = IdGenerator(new MlirSymbol("quote")(_))
 
     /** Map of quote ID to the body of the quote. */
     private val deferredQuoteGen = mutable.Map[MlirSymbol, TypedExpr]()
 
     private val localSymEnv = mutable.Map[String, MlirIdent]()
+
+    def resetLocals(): Unit = {
+      envIdGen.reset()
+      valIdGen.reset()
+      localSymEnv.clear()
+    }
 
     private def mlirType(ty: KStackTypeItem): String = ty match
       case KInt => "i32"
@@ -88,21 +102,34 @@ package dumpmlir {
       case KBool => if value then "1" else "0"
       case KString => s"\"$value\""
 
-    def println(str: String):Unit = {
+    def println(str: String): Unit = {
       (0 until indent).foreach { _ => out.print("    ") }
       out.println(str)
     }
 
-    def dumpFunction(funDef: TFunDef): Unit = {
+    def emitFunction(funDef: TFunDef): Unit = {
+      resetLocals()
       val TFunDef(name, ty, body) = funDef
 
       println(s"// $name: $ty")
       println(s"func.func @$name(${envIdGen.cur}: !sigi.env) -> !sigi.env {")
       indent += 1
-      this.dumpAst(body)
+      this.emitExpr(body)
       println(s"return ${envIdGen.cur}: !sigi.env")
       indent -= 1
       println(s"}")
+    }
+
+    def emitQuotes(): Unit = {
+
+      while deferredQuoteGen.nonEmpty do
+        // quote generation may create new quotes
+        val quotes = deferredQuoteGen.toList.sortBy(_._1)
+        deferredQuoteGen.clear()
+        for ((id, term) <- quotes) {
+          val fun = TFunDef(id.simpleName, term.stackTy, term)
+          emitFunction(fun)
+        }
     }
 
     private def renderOp(op: SigiDialectOp, comment: String = ""): Unit = {
@@ -125,16 +152,16 @@ package dumpmlir {
       * Assumptions: every name is unique in the given term.
       *
       */
-    def dumpAst(t: TypedExpr): Unit =
+    def emitExpr(t: TypedExpr): Unit =
       val envId = envIdGen.cur
       t match
         case TChain(_, a, b) =>
-          dumpAst(a)
-          dumpAst(b)
+          emitExpr(a)
+          emitExpr(b)
 
         case TPushList(ty, items) =>
           val itemIds = for (item <- items) yield {
-            dumpAst(item)
+            emitExpr(item)
             val pop = new MPopOp(ty.item, envIdGen, valIdGen)
             renderOp(pop)
             pop.outVal
@@ -207,8 +234,9 @@ package dumpmlir {
         case TFunApply(ty, name) =>
           // assume the function has been emitted with the given name (this is after monomorphisation)
 
+          val escapedName = if name.matches("[a-zA-Z]\\w*") then name else s"\"$name\""
           val resultEnv = envIdGen.next()
-          println(s"$resultEnv = func.call @$name($envId) : $TargetFunType")
+          println(s"$resultEnv = func.call @$escapedName($envId) : $TargetFunType")
 
         case TPushQuote(term) =>
           val quoteSym = quoteIdGen.next()
@@ -262,27 +290,31 @@ package dumpmlir {
 
   */
 
-  def dumpModule(out: PrintStream)(module: TModule): Unit = {
+  def emitModule(out: PrintStream)(module: TModule): Unit = {
     out.println("module {")
+    val builder = new MlirBuilder(out, indent = 1)
     for ((_, fun) <- module.functions) {
-      new MlirBuilder(out, indent = 1).dumpFunction(fun)
+      builder.emitFunction(fun)
     }
 
     val mainFun = TFunDef("__main__", module.mainExpr.stackTy, module.mainExpr)
-    new MlirBuilder(out, indent = 1).dumpFunction(mainFun)
+    builder.emitFunction(mainFun)
+
+    builder.emitQuotes()
+
 
     // todo missing glue code
 
     out.println("}")
   }
 
-  def doDumpMlir(out: PrintStream)(in: Source): Unit = {
+  def parseSigiAndEmitMlir(out: PrintStream)(in: Source): Unit = {
 
     val env = Env.Default.toTypingScope
     val res = for {
       parsed <- SigiParser.parseFile(in.mkString)
       typed <- types.typeFile(env)(parsed)
-    } yield dumpModule(out)(typed)
+    } yield emitModule(out)(typed)
 
     res match
       case Left(err) => println(err)
@@ -290,9 +322,9 @@ package dumpmlir {
   }
 
   @main
-  def dumpMlirMain(): Unit = doDumpMlir(System.out)(io.Source.stdin)
+  def dumpMlirMain(): Unit = parseSigiAndEmitMlir(System.out)(io.Source.stdin)
   @main
-  def testDumping(): Unit = doDumpMlir(System.out)(io.Source.fromString("true == false"))
+  def testDumping(): Unit = parseSigiAndEmitMlir(System.out)(io.Source.fromString("true == false"))
 
 
 }

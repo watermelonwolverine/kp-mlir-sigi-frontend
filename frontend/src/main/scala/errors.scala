@@ -33,6 +33,8 @@ case class SigiLexerError(msg: String) extends SigiCompilationError
 
 class SigiTypeError(msg: String) extends SigiCompilationError {
 
+  // val stackTrace = new Throwable(msg).printStackTrace()
+
   override def toString: String = s"Type error: $msg\n" + pos.longString
 }
 
