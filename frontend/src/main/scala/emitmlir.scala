@@ -126,7 +126,8 @@ package emitmlir {
 
     private def renderPush(ty: KStackTypeItem,
                            envIdGen: IdGenerator[MlirIdent],
-                           inVal: MlirIdent): Unit = renderOp(new MPushOp(mlirType(ty), envIdGen, inVal))
+                           inVal: MlirIdent,
+                           comment:String = ""): Unit = renderOp(new MPushOp(mlirType(ty), envIdGen, inVal), comment)
 
     /**
       * Contract: before this fun is invoked, the [[envIdGen]] is the ID of the last environment.
@@ -177,7 +178,7 @@ package emitmlir {
         // just pushing one item
         case TFunApply(StackType(Nil, List(ty)), name) =>
           localSymEnv.get(name) match
-            case Some(valueId) => renderPush(ty, envIdGen, valueId)
+            case Some(valueId) => renderPush(ty, envIdGen, valueId, comment = name)
             case None =>
               val errId = envIdGen.next()
               println(s"$errId = sigi.error $envId, {msg=\"undefined name '$name'\"}")
