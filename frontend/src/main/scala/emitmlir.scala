@@ -12,9 +12,9 @@ import scala.io
 import scala.annotation.tailrec
 import scala.collection.mutable
 
-package dumpmlir {
+package emitmlir {
 
-  import de.cfaed.sigi.dumpmlir.MlirBuilder.{BuiltinIntOps, TargetFunType}
+  import de.cfaed.sigi.emitmlir.MlirBuilder.{BuiltinIntOps, TargetFunType}
 
   import scala.io.Source
 
@@ -53,17 +53,17 @@ package dumpmlir {
   class MPopOp(val ty: KStackTypeItem,
                envIdGen: IdGenerator[MlirIdent],
                valIdGen: IdGenerator[MlirIdent]) extends SigiDialectOp {
-    val inEnv = envIdGen.cur
-    val outEnv = envIdGen.next()
+    val inEnv: MlirIdent = envIdGen.cur
+    val outEnv: MlirIdent = envIdGen.next()
 
-    val outVal = valIdGen.next()
+    val outVal: MlirIdent = valIdGen.next()
   }
 
   class MPushOp(val tyStr: String,
                 envIdGen: IdGenerator[MlirIdent],
                 val inVal: MlirIdent) extends SigiDialectOp {
-    val inEnv = envIdGen.cur
-    val outEnv = envIdGen.next()
+    val inEnv: MlirIdent = envIdGen.cur
+    val outEnv: MlirIdent = envIdGen.next()
   }
 
 
@@ -72,11 +72,6 @@ package dumpmlir {
     private val envIdGen = IdGenerator(new MlirIdent("e")(_))
     /** Ident for regular values. */
     private val valIdGen = IdGenerator(new MlirIdent("")(_))
-    /** Symbols for quote generation. */
-    private val quoteIdGen = IdGenerator(new MlirSymbol("quote")(_))
-
-    /** Map of quote ID to the body of the quote. */
-    private val deferredQuoteGen = mutable.Map[MlirSymbol, TypedExpr]()
 
     private val localSymEnv = mutable.Map[String, MlirIdent]()
 
@@ -120,18 +115,6 @@ package dumpmlir {
       println(s"}")
     }
 
-    def emitQuotes(): Unit = {
-
-      while deferredQuoteGen.nonEmpty do
-        // quote generation may create new quotes
-        val quotes = deferredQuoteGen.toList.sortBy(_._1)
-        deferredQuoteGen.clear()
-        for ((id, term) <- quotes) {
-          val fun = TFunDef(id.simpleName, term.stackTy, term)
-          emitFunction(fun)
-        }
-    }
-
     private def renderOp(op: SigiDialectOp, comment: String = ""): Unit = {
       val realComment = if comment.isEmpty then "" else s" // $comment"
       op match
@@ -143,7 +126,7 @@ package dumpmlir {
 
     private def renderPush(ty: KStackTypeItem,
                            envIdGen: IdGenerator[MlirIdent],
-                           inVal: MlirIdent) = renderOp(new MPushOp(mlirType(ty), envIdGen, inVal))
+                           inVal: MlirIdent): Unit = renderOp(new MPushOp(mlirType(ty), envIdGen, inVal))
 
     /**
       * Contract: before this fun is invoked, the [[envIdGen]] is the ID of the last environment.
@@ -239,14 +222,17 @@ package dumpmlir {
           println(s"$resultEnv = func.call @$escapedName($envId) : $TargetFunType")
 
         case TPushQuote(term) =>
-          val quoteSym = quoteIdGen.next()
           val cstId = valIdGen.next()
-          deferredQuoteGen.put(quoteSym, term)
 
-          val ty = KFun(term.stackTy)
-
-          println(s"$cstId = func.constant $quoteSym: $TargetFunType // $ty")
-          renderOp(new MPushOp(TargetFunType, envIdGen, cstId))
+          val push = new MPushOp("!sigi.closure", envIdGen, cstId)
+          val closureEnv = envIdGen.next()
+          println(s"$cstId = sigi.closure($closureEnv : !sigi.env) -> !sigi.env { // ${term.stackTy}")
+          indent += 1
+          emitExpr(term)
+          println(s"sigi.return ${envIdGen.cur}: !sigi.env")
+          indent -= 1
+          println(s"}")
+          renderOp(push)
 
         case TNameTopN(stackTy, names) =>
           for ((name, ty) <- names.zip(stackTy.consumes)) {
@@ -299,9 +285,6 @@ package dumpmlir {
 
     val mainFun = TFunDef("__main__", module.mainExpr.stackTy, module.mainExpr)
     builder.emitFunction(mainFun)
-
-    builder.emitQuotes()
-
 
     // todo missing glue code
 
