@@ -33,7 +33,7 @@ package types {
   sealed trait TypedExpr extends TypedTree {
     def stackTy: StackType
 
-    def erase: KExpr = this match
+    private def erase: KExpr = this match
       case TChain(_, a, b) => Chain(a.erase, b.erase)
       case TPushList(_, items) => PushList(items.map(_.erase))
       case TFunApply(_, name) => FunApply(name)
@@ -138,7 +138,7 @@ package types {
   }
   class KRowIVar(val origin: KRowVar) extends KStackTypeItem {
     var instantiation: List[KStackTypeItem] = _
-    val aliases = mutable.Set[KRowIVar]()
+    val aliases: mutable.Set[KRowIVar] = mutable.Set()
     private[types] val id = {
       val id = KRowIVar.seqNum
       KRowIVar.seqNum += 1
@@ -166,7 +166,7 @@ package types {
 
     override def toString: String = (consumes.mkString(", ") + " -> " + produces.mkString(", ")).trim
 
-    def exists(f: KStackTypeItem => Boolean): Boolean =
+    private def exists(f: KStackTypeItem => Boolean): Boolean =
       consumes.exists(_.exists(f)) || produces.exists(_.exists(f))
 
     /** Introduce new trivial row variables if needed.
@@ -200,7 +200,9 @@ package types {
 
   object StackType {
     def pushOne(d: KDataType): StackType = StackType(produces = List(d))
-    def symmetric(types: List[KDataType]): StackType = StackType(types, types)
+
+    private def symmetric(types: List[KDataType]): StackType = StackType(types, types)
+
     def symmetric1(t: KDataType): StackType = symmetric(List(t))
 
     def generic[T](f: (() => KTypeVar) => T): T = {
@@ -208,6 +210,7 @@ package types {
     }
 
     def generic1[T](f: KTypeVar => T): T = generic(newTypeVar => f(newTypeVar()))
+
     def generic2[T](f: (KTypeVar, KTypeVar) => T): T = generic(newTypeVar => f(newTypeVar(), newTypeVar()))
 
     // Relabel distinct tvars from the start of the alphabet.
@@ -220,6 +223,22 @@ package types {
       }.substStackType(st)
   }
 
+  def makeTySubst(
+    tvarSubst: PartialFunction[KTypeVar | KInferenceVar, KDataType],
+    rvarSubst: PartialFunction[KRowVar | KRowIVar, KStackTypeItem] = { t => t }
+  ): TySubst =
+    def makeTotal[A <: B, B](pf: PartialFunction[A, B]): A => B =
+      a => pf.applyOrElse(a, a1 => a1)
+
+    val totalTvSubst = makeTotal(tvarSubst)
+    val totalRvSubst = makeTotal(rvarSubst)
+
+    new TySubst(totalTvSubst) {
+      override protected def applyEltWiseSubst(t: KStackTypeItem): KStackTypeItem = t match
+        case dty: KDataType => super.applyEltWiseSubst(dty)
+        case rowVar: KRowVar => totalRvSubst(rowVar)
+        case iVar: KRowIVar => totalRvSubst(iVar)
+    }
 
   /** Helper class to perform substitution on terms and types. */
   class TySubst(protected val f: (KTypeVar | KInferenceVar) => KDataType) {
@@ -262,55 +281,52 @@ package types {
     def toIvarSubst: TySubst = {
       val toIvars = mutable.Map[KTypeVar, KInferenceVar]()
       val toRivars = mutable.Map[KRowVar, KRowIVar]()
-      new TySubst({
-        case t: KTypeVar => toIvars.getOrElseUpdate(t, KInferenceVar(t))
-        case t => t
-      }) {
-        override protected def applyEltWiseSubst(t: KStackTypeItem): KStackTypeItem = t match
-          case t: KRowVar => toRivars.getOrElseUpdate(t, KRowIVar(t))
-          case t => super.applyEltWiseSubst(t)
-      }
+      makeTySubst(
+      { case t: KTypeVar => toIvars.getOrElseUpdate(t, KInferenceVar(t)) },
+      { case t: KRowVar => toRivars.getOrElseUpdate(t, KRowIVar(t)) }
+                                                                          )
     }
     /** Replace type vars with fresh inference vars. */
     def mapToIvars(st: StackType): StackType = toIvarSubst.substStackType(st)
-    def mapToIvars(st: TypedExpr): TypedExpr = toIvarSubst.substTerm(st)
 
+    /** A ground substitution substitutes inference variables with their instantiation. */
 
     private class Ground {
       private[this] val tvGen = KTypeVar.typeVarGenerator()
       private[this] val rvGen = KRowVar.rowVarGenerator()
 
-      private val groundImpl: KDataType => KDataType = TySubst {
+      private val groundImpl: TySubst = makeTySubst(
+      {
         case t: KInferenceVar =>
-          if t.instantiation != null then
-            t.instantiation = groundImpl(t.instantiation)
-          else
-            t.instantiation = tvGen()
+          if t.instantiation != null
+          then t.instantiation = groundImpl.substDataTy(t.instantiation)
+          else t.instantiation = tvGen()
           t.instantiation
-        case t => t
-      }.substDataTy _
-
-
-      def groundSubst(groundDt: KDataType => KDataType = groundImpl): TySubst = new TySubst(groundDt) {
-        def groundList(lst: List[KStackTypeItem]): List[KStackTypeItem] =
-          lst.flatMap {
-            case rivar: KRowIVar =>
-              rivar.instantiation =
-                if rivar.instantiation != null
-                then groundList(rivar.instantiation)
-                else
-                  val aliasedInst = rivar.aliases.find(_.instantiation != null).map(_.instantiation)
-                  aliasedInst.getOrElse(List(rvGen()))
-              rivar.instantiation
-            case t => List(applyEltWiseSubst(t))
-          }
-        override def substStackType(stackType: StackType): StackType =
-          StackType(
-            consumes = groundList(stackType.consumes),
-            produces = groundList(stackType.produces)
-          ).simplify // notice this simplify
-
       }
+      )
+
+      def groundSubst(groundDt: KDataType => KDataType = groundImpl.substDataTy): TySubst =
+        new TySubst(groundDt) {
+          def groundList(lst: List[KStackTypeItem]): List[KStackTypeItem] =
+            lst.flatMap {
+              case rivar: KRowIVar =>
+                rivar.instantiation =
+                  if rivar.instantiation != null
+                  then groundList(rivar.instantiation)
+                  else
+                    val aliasedInst = rivar.aliases.find(_.instantiation != null).map(_.instantiation)
+                    aliasedInst.getOrElse(List(rvGen()))
+                rivar.instantiation
+              case t => List(applyEltWiseSubst(t))
+            }
+
+          override def substStackType(stackType: StackType): StackType =
+            StackType(
+              consumes = groundList(stackType.consumes),
+              produces = groundList(stackType.produces)
+              ).simplify // notice this simplify
+
+        }
     }
 
 
@@ -378,8 +394,8 @@ package types {
     }
 
 
-    def unify(a: KDataType, b: KDataType): Option[SigiTypeError] =
-      // println(s"unify: $a =:= $b")
+    private def unify(a: KDataType, b: KDataType): Option[SigiTypeError] =
+    // println(s"unify: $a =:= $b")
       if a == b then None
       else
         def unifyIvar(a: KInferenceVar, b: KDataType): Option[SigiTypeError] =
@@ -461,7 +477,7 @@ package types {
     }
   }
 
-  def checkMainExprType(term:TypedExpr): Option[SigiTypeError] =
+  def checkMainExprType(term: TypedExpr): Option[SigiTypeError] =
     if term.stackTy.simplify.consumes.nonEmpty
     then Some(SigiTypeError.mainExprConsumesElements(term.stackTy).setPos(term.pos))
     else None
@@ -471,8 +487,8 @@ package types {
     then Some(SigiTypeError.mismatch(term.stackTy, expectedTy).setPos(term.pos))
     else None
 
-  def resolveType(env: TypingScope)(t: TypeSpec): Either[SigiTypeError, KDataType] = t match
-    case TypeCtor(name, tyargs) => env.resolveType(name).flatMap {
+  def resolveType(env: TypingScope)(t: AstType): Either[SigiTypeError, KStackTypeItem] = t match
+    case ATypeCtor(name, tyargs) => env.resolveType(name).flatMap {
       case datamodel.TypeParm(tv) =>
         if tyargs.isEmpty
         then Right(tv)
@@ -481,17 +497,21 @@ package types {
         if typeDesc.tparms.lengthCompare(tyargs) != 0 then
           Left(SigiTypeError(s"Expected ${typeDesc.tparms.length} type arguments, got ${tyargs.length}"))
         else (name, tyargs) match
-          case ("List", List(item)) => resolveType(env)(item).map(KList.apply)
+          case ("list", List(item)) => resolveType(env)(item).flatMap {
+            case dty: KDataType => Right(dty)
+            case t => Left(SigiTypeError.cannotBeListItem(t))
+          }.map(KList.apply)
           case ("int", Nil) => Right(KInt)
           case ("str", Nil) => Right(KString)
           case ("bool", Nil) => Right(KBool)
           case _ => ??? // todo create user type
     }
-    case tv: TypeVar => Right(KTypeVar(tv.name)) // here we create a new type var always. We will coalesce type vars later.
-    case ft: FunType => resolveFunType(env)(ft)
+    case tv: ATypeVar => Right(KTypeVar(tv.name)) // here we create a new type var always. We will coalesce type vars later.
+    case tv: ARowVar => Right(KRowVar(tv.name)) // here we create a new type var always. We will coalesce type vars later.
+    case ft: AFunType => resolveFunType(env)(ft)
 
-  def resolveFunType(env: TypingScope)(t: FunType): Either[SigiTypeError, KFun] =
-    val FunType(consumes, produces) = t
+  def resolveFunType(env: TypingScope)(t: AFunType): Either[SigiTypeError, KFun] =
+    val AFunType(consumes, produces) = t
     for {
       cs <- consumes.map(resolveType(env)).flattenList
       ps <- produces.map(resolveType(env)).flattenList
@@ -503,12 +523,13 @@ package types {
 
   private def mergeIdenticalTvars(st: StackType): StackType =
     val tvGen = KTypeVar.typeVarGenerator()
+    val rvGen = KRowVar.rowVarGenerator()
     val identicalTVars = mutable.Map[String, KTypeVar]()
-    TySubst {
-      case tvar: KTypeVar => identicalTVars.getOrElseUpdate(tvar.name, tvGen())
-      case t => t
-    }.substStackType(st).simplify
-
+    val identicalRVars = mutable.Map[String, KRowVar]()
+    makeTySubst(
+    { case tvar: KTypeVar => identicalTVars.getOrElseUpdate(tvar.name, tvGen()) },
+    { case rvar: KRowVar => identicalRVars.getOrElseUpdate(rvar.name, rvGen()) },
+    ).substStackType(st).simplify
 
   def doValidation(env: TypingScope)(ast: KStatement): Either[SigiTypeError, TypedStmt] = {
     ast match

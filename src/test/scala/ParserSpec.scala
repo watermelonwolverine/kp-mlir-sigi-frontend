@@ -20,9 +20,14 @@ class ParserSpec extends AnyFunSuite with Matchers {
     }
   }
 
-  inline def checkTreeMatches(term: String)(tree: PartialFunction[Any, Unit]): Unit = {
+  inline def checkTreeMatches(term: String)(tree: PartialFunction[KStatement, Unit]): Unit = {
     test(term) {
-      ast.SigiParser.parseStmt(term).right.get should matchPattern(tree)
+      org.scalatest.Inside
+      import org.scalatest.Inside.inside
+      val parsed = ast.SigiParser.parseStmt(term)
+      inside(parsed) {
+        case Right(ast) => tree(ast)
+      }
     }
   }
 
@@ -68,10 +73,17 @@ class ParserSpec extends AnyFunSuite with Matchers {
 
   checkExpr("-> x, y; x * y", names("x", "y") ~ (app("x") ~ app("y") ~ app("*")))
   checkTreeMatches("define double(int-> int): ->x; 2*x;;") {
-    case KBlock(List(KFunDef("double", FunType(List(_), List(_)), _))) =>
+    case KBlock(List(KFunDef("double", AFunType(List(_), List(_)), _))) =>
   }
 
   checkTreeMatches("define id('a -> 'a): ->x; x;;") {
-    case KBlock(List(KFunDef("id", FunType(List(TypeVar("'a")), List(TypeVar("'a"))), _))) =>
+    case KBlock(List(KFunDef("id", AFunType(List(ATypeVar("'a")), List(ATypeVar("'a"))), _))) =>
+  }
+
+  checkTreeMatches("define id('S, 'a -> 'S, 'a): ->x; x;;") {
+    case KBlock(List(KFunDef("id", funT@AFunType(List(ARowVar("'S"), ATypeVar("'a")), List(ARowVar("'S"), ATypeVar("'a"))), _))) =>
+      val resolved = types.resolveFunType(Env.Default.toTypingScope)(funT)
+      val expected = KFun(StackType.generic1(StackType.symmetric1))
+      assertResult(Right(expected.toString))(resolved.map(_.toString))
   }
 }

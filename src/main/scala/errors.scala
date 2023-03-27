@@ -57,9 +57,9 @@ object SigiTypeError {
     s"Mismatched types: $a is not compatible with $b"
   )
 
-  def cannotBeListItem(t1: StackType): SigiTypeError = SigiTypeError(
+  def cannotBeListItem(t1: StackType | KStackTypeItem): SigiTypeError = SigiTypeError(
     s"Type cannot be a list item: $t1 (quote expression to box it)"
-  )
+    )
 
   def cannotApply(e: KExpr,
                   t1: StackType,

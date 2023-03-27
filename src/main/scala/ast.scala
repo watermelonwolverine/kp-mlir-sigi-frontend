@@ -29,16 +29,19 @@ package ast {
 
   sealed trait KStatement extends KNode
   case class KBlock(stmts: List[KStatement]) extends KStatement
-  case class KFunDef(name: String, ty: FunType, body: KExpr) extends KStatement
+  case class KFunDef(name: String, ty: AFunType, body: KExpr) extends KStatement
   case class KExprStatement(e: KExpr) extends KStatement {
     setPos(e.pos)
   }
 
-  /** The result of parsing a type. Some of the components may be unresolved. */
-  sealed trait TypeSpec extends Positional
-  case class TypeCtor(name: String, tyargs: List[TypeSpec] = Nil) extends TypeSpec
-  case class TypeVar(name: String) extends TypeSpec
-  case class FunType(consumes: List[TypeSpec], produces: List[TypeSpec]) extends TypeSpec
+  /** The result of parsing a type. Some of the components may be unresolved. 
+    * Semantic analysis lifts this into a [[types.KStackTypeItem]] in [[types.resolveType]].
+    */
+  sealed trait AstType extends Positional
+  case class ATypeCtor(name: String, tyargs: List[AstType] = Nil) extends AstType
+  case class ATypeVar(name: String) extends AstType
+  case class ARowVar(name: String) extends AstType
+  case class AFunType(consumes: List[AstType], produces: List[AstType]) extends AstType
 
   sealed trait KExpr extends KNode {
     override def toString: String = this match
@@ -70,21 +73,20 @@ package ast {
     private def thunk =
       LBRACE ~> (exprSeq | accept("operator", { case OP(n) => FunApply(n) })) <~ RBRACE ^^ Quote.apply
 
-    private def dty: Parser[TypeSpec] =
-      id ~ tyArgs.? ^^ { case id ~ tyargs => TypeCtor(id.name, tyargs.getOrElse(Nil)).setPos(id.pos) }
-        | LPAREN ~> funTy <~ RPAREN // funtype
-        | accept("type variable", { case t: TVAR => TypeVar(t.name).setPos(t.pos) })
+    private def dty: Parser[AstType] =
+      id ~ tyArgs.? ^^ { case id ~ tyargs => ATypeCtor(id.name, tyargs.getOrElse(Nil)).setPos(id.pos) }
+        | LPAREN ~> funTy <~ RPAREN
+        | accept("type variable", { case t: TVAR => ATypeVar(t.name).setPos(t.pos) })
+        | accept("row variable", { case t: ROWVAR => ARowVar(t.name).setPos(t.pos) })
 
     // note that the normal sigi grammar uses angle brackets
     // todo maybe use OCaml postfix syntax for type ctors
     //  although maybe using familiar looking generic types makes it look more familiar.
-    // todo maybe remove type param clauses, they can be defined implicitly
-    private def tyArgs: Parser[List[TypeSpec]] = LBRACKET ~> rep1sep(dty, COMMA) <~ RBRACKET
-    // todo currently not possible to write a generic type explicitly.
+    private def tyArgs: Parser[List[AstType]] = LBRACKET ~> rep1sep(dty, COMMA) <~ RBRACKET
 
-    private def funTy: Parser[FunType] =
+    private def funTy: Parser[AFunType] =
       repsep(dty, COMMA) ~ ARROW ~ repsep(dty, COMMA) ^^ {
-        case consumes ~ _ ~ produces => FunType(consumes, produces)
+        case consumes ~ _ ~ produces => AFunType(consumes, produces)
       }
 
     private def inParens[P](p: Parser[P]): Parser[P] = LPAREN ~> p <~ RPAREN
@@ -177,6 +179,8 @@ package ast {
       }
     }
 
+    // these validation methods only perform syntactic validation.
+    
     private def validate(e: KStatement): Option[SigiParseError] = e match
       case KBlock(stmts) => stmts.foldLeft[Option[SigiParseError]](None)((a, b) => a.orElse(validate(b)))
       case KFunDef(_, _, body) => validate(body)

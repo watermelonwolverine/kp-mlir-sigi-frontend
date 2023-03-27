@@ -9,6 +9,10 @@ package datamodel {
 
   import java.lang.invoke.TypeDescriptor
 
+  /** Abstract model of a type. Should contain info about the layout.
+    * Currently not really useful, will come into play when implementing
+    * user-defined types/ pattern matching.
+    */
   // todo this is incompletely implemented and there is no syntax to declare your own type descriptors.
   //  first step would be to introduce a new type of KValue which takes an arbitrary descriptor
   //  then support types, then support parsing it.
@@ -31,7 +35,7 @@ package datamodel {
       "int" -> Primitive,
       "bool" -> Primitive,
       "str" -> Primitive, // todo make List[char]
-      "List" -> StackType.generic1(tv =>
+      "list" -> StackType.generic1(tv =>
         Aggregate(List(tv), List(
           TypeAlt("cons", List(tv, KList(tv))),
           TypeAlt("nil", Nil)
