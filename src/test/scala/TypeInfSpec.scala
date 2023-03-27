@@ -46,10 +46,10 @@ class TypeInfSpec extends AnyFunSuite {
   checkType("1 2 ((-> x, y; x) y)", "-> int, int")
   checkType("1 2 (-> x, y; (x y))", "-> int, int")
 
-  checkType("[]", "-> List['a]")
-  checkType("[2]", "-> List[int]")
-  checkType("[{->x; x}]", "-> List[('a -> 'a)]")
-  checkType("-> x, y; [x, y]", "'a, 'a -> List['a]")
+  checkType("[]", "-> 'a list")
+  checkType("[2]", "-> int list")
+  checkType("[{->x; x}]", "-> ('a -> 'a) list")
+  checkType("-> x, y; [x, y]", "'a, 'a -> 'a list")
   checkType("-> x, y; x * y", "int, int -> int")
   checkType("-> x, y; x x * y", "int, int -> int, int")
 

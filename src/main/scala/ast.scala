@@ -34,7 +34,7 @@ package ast {
     setPos(e.pos)
   }
 
-  /** The result of parsing a type. Some of the components may be unresolved. 
+  /** The result of parsing a type. Some of the components may be unresolved.
     * Semantic analysis lifts this into a [[types.KStackTypeItem]] in [[types.resolveType]].
     */
   sealed trait AstType extends Positional
@@ -73,16 +73,20 @@ package ast {
     private def thunk =
       LBRACE ~> (exprSeq | accept("operator", { case OP(n) => FunApply(n) })) <~ RBRACE ^^ Quote.apply
 
-    private def dty: Parser[AstType] =
-      id ~ tyArgs.? ^^ { case id ~ tyargs => ATypeCtor(id.name, tyargs.getOrElse(Nil)).setPos(id.pos) }
-        | LPAREN ~> funTy <~ RPAREN
+    private def dty_atom: Parser[AstType] =
+      id ^^ { id => ATypeCtor(id.name, Nil).setPos(id.pos) }
+        | LPAREN ~> (funTy | dty) <~ RPAREN
         | accept("type variable", { case t: TVAR => ATypeVar(t.name).setPos(t.pos) })
         | accept("row variable", { case t: ROWVAR => ARowVar(t.name).setPos(t.pos) })
 
-    // note that the normal sigi grammar uses angle brackets
-    // todo maybe use OCaml postfix syntax for type ctors
-    //  although maybe using familiar looking generic types makes it look more familiar.
-    private def tyArgs: Parser[List[AstType]] = LBRACKET ~> rep1sep(dty, COMMA) <~ RBRACKET
+    private def dty: Parser[AstType] =
+      dty_atom ~ rep(dty_atom) ^? ( {
+        case hd ~ Nil => hd
+        case hd ~ (args :+ (last@ATypeCtor(name, Nil))) =>
+          ATypeCtor(name, hd :: args).setPos(last.pos)
+      }, _ => "Type constructor should be an identifier")
+
+    private def tyArgs: Parser[List[AstType]] = rep1(dty)
 
     private def funTy: Parser[AFunType] =
       repsep(dty, COMMA) ~ ARROW ~ repsep(dty, COMMA) ^^ {
@@ -180,7 +184,7 @@ package ast {
     }
 
     // these validation methods only perform syntactic validation.
-    
+
     private def validate(e: KStatement): Option[SigiParseError] = e match
       case KBlock(stmts) => stmts.foldLeft[Option[SigiParseError]](None)((a, b) => a.orElse(validate(b)))
       case KFunDef(_, _, body) => validate(body)

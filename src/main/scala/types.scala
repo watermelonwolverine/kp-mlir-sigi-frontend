@@ -75,7 +75,7 @@ package types {
       case KString => "str"
       case KBool => "bool"
       case KFun(stackType) => "(" + stackType.toString + ")"
-      case KList(item) => s"List[$item]"
+      case KList(item) => s"$item list"
       case tv: KTypeVar => tv.name
       case rv: KRowVar => rv.name
       case riv: KRowIVar => riv.origin.name + riv.id

@@ -8,6 +8,9 @@ import org.scalatest.funsuite.AnyFunSuite
 import org.scalatest.matchers.should.*
 
 import scala.annotation.targetName
+import org.scalatest.Inside.inside
+
+import scala.util.Right
 
 /**
   * @author Clément Fournier &lt;clement.fournier@tu-dresden.de&gt;
@@ -22,8 +25,6 @@ class ParserSpec extends AnyFunSuite with Matchers {
 
   inline def checkTreeMatches(term: String)(tree: PartialFunction[KStatement, Unit]): Unit = {
     test(term) {
-      org.scalatest.Inside
-      import org.scalatest.Inside.inside
       val parsed = ast.SigiParser.parseStmt(term)
       inside(parsed) {
         case Right(ast) => tree(ast)
@@ -78,6 +79,20 @@ class ParserSpec extends AnyFunSuite with Matchers {
 
   checkTreeMatches("define id('a -> 'a): ->x; x;;") {
     case KBlock(List(KFunDef("id", AFunType(List(ATypeVar("'a")), List(ATypeVar("'a"))), _))) =>
+  }
+
+
+  checkTreeMatches("define id('a list -> 'b list): pop [];;") {
+    case KBlock(List(KFunDef("id", AFunType(List(ATypeCtor("list", List(ATypeVar("'a")))), _), _))) =>
+  }
+
+  checkTreeMatches("define map('a list, ('a -> 'b) -> 'b list): pop pop [];;") {
+    case KBlock(List(KFunDef("map", AFunType(
+    List(
+    ATypeCtor("list", List(ATypeVar("'a"))),
+    AFunType(List(ATypeVar("'a")), List(ATypeVar("'b")))
+    ),
+    List(ATypeCtor("list", List(ATypeVar("'b"))))), _))) =>
   }
 
   checkTreeMatches("define id('S, 'a -> 'S, 'a): ->x; x;;") {
