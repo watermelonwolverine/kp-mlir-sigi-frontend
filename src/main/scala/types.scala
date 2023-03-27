@@ -559,7 +559,6 @@ package types {
       case KFunDef(name, ty, body) =>
         for {
           // todo should unify the type of the body and the type of the signature
-          // todo should defer type checking of the body
           KFun(stackTy) <- types.resolveFunType(env)(ty)
           typedBody <- types.assignType(env)(body)
         } yield TFunDef(name, stackTy, typedBody).setPos(ast.pos)

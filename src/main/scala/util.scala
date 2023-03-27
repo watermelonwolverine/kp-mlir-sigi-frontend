@@ -13,10 +13,10 @@ extension[A] (self: A)
     self
   }
 
-extension[A, B] (eithers: List[Either[A, B]]) def flattenList: Either[A, List[B]] =
+extension[A, B] (eithers: List[Either[A, B]]) def flattenList(using mergeFun: (A, List[A]) => A): Either[A, List[B]] =
   eithers.partition(_.isLeft) match
-    case (Nil, rights) => Right(for (Right(b) <- rights) yield b)
-    case (hd :: _, _) => Left(hd.left.get)
+    case (Nil, rights) => Right(rights.collect { case Right(b) => b })
+    case (Left(hd) :: rest, _) => Left(mergeFun(hd, rest.collect { case Left(a) => a }))
 
 // note: this is  not a general purpose implementation, as it requires a total pattern.
 // we can't conjure a Left from nowhere

@@ -24,7 +24,10 @@ package repl {
         println(s"$consumed -> $produced".trim)
 
       case TFunDef(name, ty, _) => println(s"Defined function $name: $ty")
-      case TBlock(st) => st.foreach(showSomethingNice(before, after)) // todo this does not work! the environments are different
+      case TBlock(st) =>
+        // this does not really work as the environments are different between each statement.
+        // but at the same time the repl never parses a block so it does not matter.
+        st.foreach(showSomethingNice(before, after))
 
 
     def chainWithLastExpr(typedStmt: KStatement, lastExpr: Option[TypedExpr]): KStatement = {

@@ -28,6 +28,7 @@ object SigiParseError {
     node.pos
   )
 }
+
 case class SigiLexerError(msg: String) extends SigiCompilationError
 
 
@@ -38,14 +39,20 @@ class SigiTypeError(msg: String) extends SigiCompilationError {
   override def toString: String = s"Type error: $msg\n" + pos.longString
 }
 
+given typeErrorMerger: ((SigiTypeError, List[SigiTypeError]) => SigiTypeError) = {
+  (a, as) => SigiTypeError((a :: as).mkString("\n"))
+}
+
 object SigiTypeError {
 
   def apply(msg: String) = new SigiTypeError(msg)
 
   def undef(name: String): SigiTypeError = SigiTypeError(s"Undefined name '$name'")
+
   def mainExprConsumesElements(stackType: StackType): SigiTypeError = SigiTypeError(
     s"Main expression should not consume elements from the stack, but its type is ($stackType)"
-  )
+    )
+
   def mismatch(actual: StackType, expected: StackType): SigiTypeError = SigiTypeError(
     s"Mismatched stack types: $actual is not compatible with $expected"
   )
