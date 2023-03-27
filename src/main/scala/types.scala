@@ -287,8 +287,8 @@ package types {
 
   }
 
-  val BinOpType = StackType(consumes = List(KInt, KInt), produces = List(KInt))
-  val UnaryOpType = StackType(consumes = List(KInt), produces = List(KInt))
+  def binOpType(t: KDataType) = StackType(consumes = List(t, t), produces = List(t))
+  def unaryOpType(t: KDataType) = StackType(consumes = List(t), produces = List(t))
 
   private[types] class TypingCtx {
 

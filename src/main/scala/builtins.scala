@@ -22,38 +22,40 @@ package builtins {
   private def cmpOp(name: String, definition: (Int, Int) => Boolean): (String, VFun) = {
     stackFun(name, StackType(consumes = List(KInt, KInt), produces = List(KBool)), {
       case VNum(b) :: VNum(a) :: tail =>
-        try {
-          val res = definition(a, b)
-          Right(VBool(res) :: tail)
-        } catch {
-          case e: Exception => Left(SigiEvalError(s"Error executing op $name: ${e.getMessage}"))
-        }
+        val res = definition(a, b)
+        Right(VBool(res) :: tail)
+    })
+  }
+
+
+  private def boolUnaryOp(name: String, definition: (Boolean) => Boolean): (String, VFun) = {
+    stackFun(name, types.unaryOpType(KBool), {
+      case VBool(a) :: tail =>
+        val res = definition(a)
+        Right(VBool(res) :: tail)
+    })
+  }
+  private def boolOp(name: String, definition: (Boolean, Boolean) => Boolean): (String, VFun) = {
+    stackFun(name, types.binOpType(KBool), {
+      case VBool(b) :: VBool(a) :: tail =>
+        val res = definition(a, b)
+        Right(VBool(res) :: tail)
     })
   }
 
   private def binOp(name: String, definition: (Int, Int) => Int): (String, VFun) = {
-    stackFun(name, types.BinOpType, {
+    stackFun(name, types.binOpType(KInt), {
       case VNum(b) :: VNum(a) :: tail =>
-        try {
-          val res = definition(a, b)
-          Right(VNum(res) :: tail)
-        } catch {
-          case e: Exception => Left(SigiEvalError(s"Error executing op $name: ${e.getMessage}"))
-        }
+        val res = definition(a, b)
+        Right(VNum(res) :: tail)
     })
   }
 
   private def unaryOp(name: String, definition: Int => Int): (String, VFun) = {
-    fun(name, types.UnaryOpType, t => env => {
-      env.stack match
-        case VNum(a) :: tail =>
-          try {
-            val res = definition(a)
-            Right(env.copy(stack = VNum(res) :: tail))
-          } catch {
-            case e: Exception => Left(SigiEvalError(s"Error executing op $name: ${e.getMessage}"))
-          }
-        case _ => Left(SigiEvalError.stackTypeError(t, env))
+    stackFun(name, types.unaryOpType(KInt), {
+      case VNum(a) :: tail =>
+        val res = definition(a)
+        Right(VNum(res) :: tail)
     })
   }
 
@@ -102,11 +104,14 @@ package builtins {
     unaryOp("unary_+", a => a),
     unaryOp("unary_~", a => a ^ a),
 
+    boolOp("and", _ & _),
+    boolOp("or", _ | _),
+    boolOp("xor", _ ^ _),
+    boolUnaryOp("not", !_),
+
     // These are core function. Also see list of cat builtins: https://github.com/cdiggins/cat-language
-    // TODO apply
-    //      compose : ('S ('B -> 'C) ('A -> 'B) -> 'S ('A -> 'C))
+    // TODO compose : ('S ('B -> 'C) ('A -> 'B) -> 'S ('A -> 'C))
     //      while   : ('S ('S -> 'R bool) ('R -> 'S) -> 'S)
-    //  need row type variables
     fun("apply", {
       // apply   : ('S ('S -> 'R) -> 'R)
       val row = KRowVar.rowVarGenerator()
