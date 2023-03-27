@@ -13,7 +13,7 @@ package builtins {
 
   private def genericCmpOp(name: String, negated: Boolean): (String, VFun) = {
     stackFun(name, StackType.generic1(tv => StackType(consumes = List(tv, tv), produces = List(KBool))), {
-      case a :: b :: tail =>
+      case b :: a :: tail =>
         val eq = a == b
         Right(VBool(eq != negated) :: tail)
     })
@@ -21,7 +21,7 @@ package builtins {
 
   private def cmpOp(name: String, definition: (Int, Int) => Boolean): (String, VFun) = {
     stackFun(name, StackType(consumes = List(KInt, KInt), produces = List(KBool)), {
-      case VNum(a) :: VNum(b) :: tail =>
+      case VNum(b) :: VNum(a) :: tail =>
         try {
           val res = definition(a, b)
           Right(VBool(res) :: tail)
@@ -33,7 +33,7 @@ package builtins {
 
   private def binOp(name: String, definition: (Int, Int) => Int): (String, VFun) = {
     stackFun(name, types.BinOpType, {
-      case VNum(a) :: VNum(b) :: tail =>
+      case VNum(b) :: VNum(a) :: tail =>
         try {
           val res = definition(a, b)
           Right(VNum(res) :: tail)
@@ -98,9 +98,9 @@ package builtins {
     cmpOp("<=", _ <= _),
     genericCmpOp("=", false),
     genericCmpOp("<>", true),
-    unaryOp("unary-", a => -a),
-    unaryOp("unary+", a => a),
-    unaryOp("unary~", a => a ^ a),
+    unaryOp("unary_-", a => -a),
+    unaryOp("unary_+", a => a),
+    unaryOp("unary_~", a => a ^ a),
 
     // These are core function. Also see list of cat builtins: https://github.com/cdiggins/cat-language
     // TODO apply
