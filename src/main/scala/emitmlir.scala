@@ -261,6 +261,7 @@ package emitmlir {
     private val BuiltinIntOps = Map(
       "+" -> "arith.addi",
       "-" -> "arith.subi",
+      "*" -> "arith.muli",
       "/" -> "arith.divi",
       "%" -> "arith.modi",
       "<=" -> "arith.cmpi \"sle\",",

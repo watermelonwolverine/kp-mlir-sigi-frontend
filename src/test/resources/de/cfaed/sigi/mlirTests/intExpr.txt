@@ -1,0 +1,20 @@
+module {
+    // __main__: -> int
+    func.func @__main__(%e0: !sigi.env) -> !sigi.env {
+        %1 = arith.constant 1: i32
+        %e1 = sigi.push %e0, %1: i32
+        %2 = arith.constant 2: i32
+        %e2 = sigi.push %e1, %2: i32
+        %3 = arith.constant 4: i32
+        %e3 = sigi.push %e2, %3: i32
+        %e4, %4 = sigi.pop %e3: i32
+        %e5, %5 = sigi.pop %e4: i32
+        %6 = arith.muli %4, %5: i32
+        %e6 = sigi.push %e5, %6: i32
+        %e7, %7 = sigi.pop %e6: i32
+        %e8, %8 = sigi.pop %e7: i32
+        %9 = arith.addi %7, %8: i32
+        %e9 = sigi.push %e8, %9: i32
+        return %e9: !sigi.env
+    }
+}
