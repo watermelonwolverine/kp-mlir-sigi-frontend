@@ -18,6 +18,8 @@ package ast {
   import scala.io.Source
 
   /**
+    * An AST node before semantic analysis.
+    *
     * @author Clément Fournier &lt;clement.fournier@tu-dresden.de&gt;
     */
   sealed trait KNode extends Positional
