@@ -435,7 +435,7 @@ package types {
                             private[types] val ctx: TypingCtx) {
 
 
-    def addBindings(names: BindingTypes): TypingScope =
+    def addBindings(names: IterableOnce[(String, KDataType)]): TypingScope =
       new TypingScope(
         bindings = this.bindings ++ names,
         typesInScope = this.typesInScope,
@@ -559,9 +559,9 @@ package types {
       case KFunDef(name, ty, body) =>
         for {
           // todo should unify the type of the body and the type of the signature
-          KFun(stackTy) <- types.resolveFunType(env)(ty)
-          typedBody <- types.assignType(env)(body)
-        } yield TFunDef(name, stackTy, typedBody).setPos(ast.pos)
+          funTy <- types.resolveFunType(env)(ty)
+          typedBody <- types.assignType(env.addBindings(List(name -> funTy)))(body)
+        } yield TFunDef(name, funTy.stack, typedBody).setPos(ast.pos)
   }
 
 

@@ -86,7 +86,7 @@ package ast {
     override type Elem = KToken
 
     private def thunk =
-      LBRACE ~> (exprSeq | accept("operator", { case OP(n) => FunApply(n) })) <~ RBRACE ^^ Quote.apply
+      LBRACE ~> expr <~ RBRACE ^^ Quote.apply
 
     private def dty_atom: Parser[AstType] =
       id ^^ { id => ATypeCtor(id.name, Nil).setPos(id.pos) }
@@ -101,8 +101,6 @@ package ast {
           ATypeCtor(name, hd :: args).setPos(last.pos)
       }, _ => "Type constructor should be an identifier")
 
-    private def tyArgs: Parser[List[AstType]] = rep1(dty)
-
     private def funTy: Parser[AFunType] =
       repsep(dty, COMMA) ~ ARROW ~ repsep(dty, COMMA) ^^ {
         case consumes ~ _ ~ produces => AFunType(consumes, produces)
@@ -112,20 +110,20 @@ package ast {
 
     private def funDef: Parser[KFunDef] =
     // note that the normal sigi grammar does not use a semi
-      DEFINE ~> id ~ inParens(funTy) ~ COLON ~ exprSeq <~ PHAT_SEMI ^^ {
+      DEFINE ~> id ~ inParens(funTy) ~ COLON ~ expr <~ PHAT_SEMI ^^ {
         case id ~ ty ~ _ ~ body => KFunDef(id.name, ty, body).setPos(id.pos)
       }
 
-    private def parexpr = LPAREN ~> exprSeq <~ RPAREN
+    private def parexpr = LPAREN ~> expr <~ RPAREN
 
     private def opAsFunApply = accept("operator", { case op: OP => FunApply(op.opName).setPos(op.pos) })
     private def id: Parser[ID] = accept("identifier", { case id: ID => id })
     private def identAsFunApply = id ^^ { id => FunApply(id.name).setPos(id.pos) }
 
     private def ifelse: Parser[KExpr] =
-      (IF ~> parexpr.? ~ (exprSeq ^^ Quote.apply)
-        ~ rep(ELIF ~> parexpr ~ (exprSeq ^^ Quote.apply))
-        ~ (ELSE ~> exprSeq ^^ Quote.apply)
+      (IF ~> parexpr.? ~ (expr ^^ Quote.apply)
+        ~ rep(ELIF ~> parexpr ~ (expr ^^ Quote.apply))
+        ~ (ELSE ~> expr ^^ Quote.apply)
         ) ^^ {
         case (cond: Option[KExpr]) ~ (thenThunk: Quote) ~ (elifs: List[KExpr ~ Quote]) ~ (elseThunk: Quote) =>
           def makeIf(thenThunk: Quote, elseThunk: Quote): KExpr =
@@ -146,11 +144,12 @@ package ast {
         | accept("number", { case n@NUMBER(v) => PushPrim(types.KInt, v).setPos(n.pos) })
         | accept("string", { case s@STRING(v) => PushPrim(types.KString, v).setPos(s.pos) })
         | BACKSLASH ~> (opAsFunApply | identAsFunApply) ^^ Quote.apply
-        | (LBRACKET ~ repsep(exprSeq, COMMA) <~ RBRACKET ^^ { case bracket ~ list => PushList(list).setPos(bracket.pos) })
-        | (LPAREN ~> (exprSeq | opAsFunApply) <~ RPAREN)
+        | (LBRACKET ~ repsep(expr, COMMA) <~ RBRACKET ^^ { case bracket ~ list => PushList(list).setPos(bracket.pos) })
+        | (LPAREN ~> (expr | opAsFunApply) <~ RPAREN)
         | thunk
-        | (ARROW ~ rep1sep(id, COMMA) <~ SEMI ^^ { case arrow ~ ids => NameTopN(ids.map(_.name)).setPos(arrow.pos) })
         | ifelse
+    private def nameTopN: Parser[KExpr] =
+       ARROW ~ rep1sep(id, COMMA) <~ SEMI ^^ { case arrow ~ ids => NameTopN(ids.map(_.name)).setPos(arrow.pos) }
 
     private def unary: Parser[KExpr] =
       (OP("-") | OP("+") | OP("~")).? ~ primary ^^ {
@@ -166,20 +165,18 @@ package ast {
         }
       }
 
+    private def exprSeq: Parser[KExpr] =
+      unary ~ rep(primary) ^^ {
+        case fst ~ rest => (fst :: rest).reduceLeft(Chain.apply)
+      }
 
-    private def multexpr: Parser[KExpr] = makeBinary(unary, OP("*") | OP("/") | OP("%"))
+    private def multexpr: Parser[KExpr] = makeBinary(exprSeq, OP("*") | OP("/") | OP("%"))
 
     private def addexpr: Parser[KExpr] = makeBinary(multexpr, OP("+") | OP("-"))
 
     private def compexpr: Parser[KExpr] = makeBinary(addexpr, OP("<") | OP(">") | OP("<=") | OP(">=") | OP("=") | OP("<>"))
 
-    private def sequenceableExpr: Parser[KExpr] =
-      compexpr
-
-    private def exprSeq: Parser[KExpr] =
-      rep1(sequenceableExpr) ^^ (_ reduceLeft Chain.apply)
-
-    private def expr: Parser[KExpr] = exprSeq
+    private def expr: Parser[KExpr] = rep1(compexpr | nameTopN) ^^ (_ reduceLeft Chain.apply)
 
     private def statement: Parser[KStatement] = funDef | expr <~ PHAT_SEMI.? ^^ KExprStatement.apply
 

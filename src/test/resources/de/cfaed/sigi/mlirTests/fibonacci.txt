@@ -31,11 +31,11 @@ module {
             %e21, %15 = sigi.pop %e20: i32
             %16 = arith.subi %14, %15: i32
             %e22 = sigi.push %e21, %16: i32
-            %e23, %17 = sigi.pop %e22: i32
-            %e24, %18 = sigi.pop %e23: i32
+            %e23 = func.call @fib_naive(%e22) : !sigi.stack -> !sigi.stack
+            %e24, %17 = sigi.pop %e23: i32
+            %e25, %18 = sigi.pop %e24: i32
             %19 = arith.addi %17, %18: i32
-            %e25 = sigi.push %e24, %19: i32
-            %e26 = func.call @fib_naive(%e25) : !sigi.stack -> !sigi.stack
+            %e26 = sigi.push %e25, %19: i32
             closure.return %e26: !sigi.stack
         }
         %e10 = sigi.push %e9, %8: !closure.box<!sigi.stack -> !sigi.stack>

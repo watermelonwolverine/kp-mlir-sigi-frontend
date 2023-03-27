@@ -43,7 +43,9 @@ class ParserSpec extends AnyFunSuite with Matchers {
     def names(names: String*): NameTopN = NameTopN(names.toList)
 
     given KPrimitive[Int] = types.KInt
+
     given KPrimitive[String] = types.KString
+
     given KPrimitive[Boolean] = types.KBool
   }
 
@@ -51,6 +53,10 @@ class ParserSpec extends AnyFunSuite with Matchers {
 
   checkExpr("1 2", p(1) ~ p(2))
   checkExpr("1 2 3", (p(1) ~ p(2)) ~ p(3))
+
+  checkExpr("1 a + 2 a", ((p(1) ~ app("a")) ~ (p(2) ~ app("a"))) ~ app("+"))
+  checkExpr("1 a + -2 a", ((p(1) ~ app("a")) ~ ((p(2) ~ app("unary_-")) ~ app("a"))) ~ app("+"))
+
   checkExpr("1 2 show", (p(1) ~ p(2)) ~ app("show"))
   checkExpr("{ show }", Quote(app("show")))
   checkExpr("\\show", Quote(app("show")))
@@ -59,7 +65,7 @@ class ParserSpec extends AnyFunSuite with Matchers {
   checkExpr("false", p(false))
   checkExpr(""" "a" "b"  """, p("a") ~ p("b"))
 
-  checkExpr("-> x, y; x y", names("x", "y") ~ app("x") ~ app("y"))
+  checkExpr("-> x, y; x y", names("x", "y") ~ (app("x") ~ app("y")))
   checkExpr("-> x;", names("x"))
   checkExpr("-> x, y; y", names("x", "y") ~ app("y"))
 
@@ -74,29 +80,29 @@ class ParserSpec extends AnyFunSuite with Matchers {
 
   checkExpr("-> x, y; x * y", names("x", "y") ~ (app("x") ~ app("y") ~ app("*")))
   checkTreeMatches("define double(int-> int): ->x; 2*x;;") {
-    case KBlock(List(KFunDef("double", AFunType(List(_), List(_)), _))) =>
+    case KFunDef("double", AFunType(List(_), List(_)), _) =>
   }
 
   checkTreeMatches("define id('a -> 'a): ->x; x;;") {
-    case KBlock(List(KFunDef("id", AFunType(List(ATypeVar("'a")), List(ATypeVar("'a"))), _))) =>
+    case KFunDef("id", AFunType(List(ATypeVar("'a")), List(ATypeVar("'a"))), _) =>
   }
 
 
   checkTreeMatches("define id('a list -> 'b list): pop [];;") {
-    case KBlock(List(KFunDef("id", AFunType(List(ATypeCtor("list", List(ATypeVar("'a")))), _), _))) =>
+    case KFunDef("id", AFunType(List(ATypeCtor("list", List(ATypeVar("'a")))), _), _) =>
   }
 
   checkTreeMatches("define map('a list, ('a -> 'b) -> 'b list): pop pop [];;") {
-    case KBlock(List(KFunDef("map", AFunType(
+    case KFunDef("map", AFunType(
     List(
     ATypeCtor("list", List(ATypeVar("'a"))),
     AFunType(List(ATypeVar("'a")), List(ATypeVar("'b")))
     ),
-    List(ATypeCtor("list", List(ATypeVar("'b"))))), _))) =>
+    List(ATypeCtor("list", List(ATypeVar("'b"))))), _) =>
   }
 
   checkTreeMatches("define id('S, 'a -> 'S, 'a): ->x; x;;") {
-    case KBlock(List(KFunDef("id", funT@AFunType(List(ARowVar("'S"), ATypeVar("'a")), List(ARowVar("'S"), ATypeVar("'a"))), _))) =>
+    case KFunDef("id", funT@AFunType(List(ARowVar("'S"), ATypeVar("'a")), List(ARowVar("'S"), ATypeVar("'a"))), _) =>
       val resolved = types.resolveFunType(Env.Default.toTypingScope)(funT)
       val expected = KFun(StackType.generic1(StackType.symmetric1))
       assertResult(Right(expected.toString))(resolved.map(_.toString))
