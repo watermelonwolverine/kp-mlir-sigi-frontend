@@ -1,6 +1,6 @@
 module {
     // __main__: -> int
-    func.func @__main__(%e0: !sigi.env) -> !sigi.env {
+    func.func @__main__(%e0: !sigi.stack) -> !sigi.stack {
         %1 = arith.constant 1: i32
         %e1 = sigi.push %e0, %1: i32
         %2 = arith.constant 2: i32
@@ -15,6 +15,6 @@ module {
         %e8, %8 = sigi.pop %e7: i32
         %9 = arith.addi %7, %8: i32
         %e9 = sigi.push %e8, %9: i32
-        return %e9: !sigi.env
+        return %e9: !sigi.stack
     }
 }

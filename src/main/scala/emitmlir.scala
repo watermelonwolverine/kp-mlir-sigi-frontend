@@ -107,10 +107,10 @@ package emitmlir {
       val TFunDef(name, ty, body) = funDef
 
       println(s"// $name: $ty")
-      println(s"func.func @$name(${envIdGen.cur}: !sigi.env) -> !sigi.env {")
+      println(s"func.func @$name(${envIdGen.cur}: !sigi.stack) -> !sigi.stack {")
       indent += 1
       this.emitExpr(body)
-      println(s"return ${envIdGen.cur}: !sigi.env")
+      println(s"return ${envIdGen.cur}: !sigi.stack")
       indent -= 1
       println(s"}")
     }
@@ -239,10 +239,10 @@ package emitmlir {
 
           val push = new MPushOp(MlirBuilder.ClosureT, envIdGen, cstId)
           val closureEnv = envIdGen.next()
-          println(s"$cstId = closure.box ($closureEnv : !sigi.env) -> !sigi.env { // ${term.stackTy}")
+          println(s"$cstId = closure.box ($closureEnv : !sigi.stack) -> !sigi.stack { // ${term.stackTy}")
           indent += 1
           emitExpr(term)
-          println(s"closure.return ${envIdGen.cur}: !sigi.env")
+          println(s"closure.return ${envIdGen.cur}: !sigi.stack")
           indent -= 1
           println(s"}")
           renderOp(push)
@@ -256,8 +256,8 @@ package emitmlir {
   }
 
   object MlirBuilder {
-    private val TargetFunType = "!sigi.env -> !sigi.env"
-    private val ClosureT = "!closure.box<!sigi.env -> !sigi.env>"
+    private val TargetFunType = "!sigi.stack -> !sigi.stack"
+    private val ClosureT = "!closure.box<!sigi.stack -> !sigi.stack>"
     private val BuiltinIntOps = Map(
       "+" -> "arith.addi",
       "-" -> "arith.subi",
@@ -277,11 +277,11 @@ package emitmlir {
 
   /*
   Overview of generation steps:
-  - Each expression is technically a function of type (!sigi.env -> !sigi.env). Most of them are
+  - Each expression is technically a function of type (!sigi.stack -> !sigi.stack). Most of them are
    generated inline though. We use the statement as a codegen boundary because it's also a scoping
    boundary.
-  - Each function is generated into its own func of type (!sigi.env -> !sigi.env)
-  - Each quote is mapped to a !closure.box<!sigi.env -> !sigi.env>
+  - Each function is generated into its own func of type (!sigi.stack -> !sigi.stack)
+  - Each quote is mapped to a !closure.box<!sigi.stack -> !sigi.stack>
     - they may capture their environment. This makes memory safety complicated, in the general
     case we need garbage collection. Let's restrict quotes to only capture closures and integers.
   - Function calls (= variable access):
