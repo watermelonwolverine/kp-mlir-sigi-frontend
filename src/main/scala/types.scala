@@ -10,7 +10,7 @@ package types {
 
   import java.util.{Locale, Objects}
   import scala.annotation.tailrec
-  import scala.collection.mutable
+  import scala.collection.{TraversableOnce, mutable}
   import scala.util.Right
   import de.cfaed.sigi.{types, withFilter}
 
@@ -33,13 +33,16 @@ package types {
   sealed trait TypedExpr extends TypedTree {
     def stackTy: StackType
 
-    private def erase: KExpr = this match
-      case TChain(_, a, b) => Chain(a.erase, b.erase)
-      case TPushList(_, items) => PushList(items.map(_.erase))
-      case TFunApply(_, name) => FunApply(name)
-      case TPushQuote(term) => Quote(term.erase)
-      case TNameTopN(_, names) => NameTopN(names)
-      case TPushPrim(ty, value) => PushPrim(ty, value)
+    def erase: KExpr =
+      val res = this match
+        case TChain(_, a, b) => Chain(a.erase, b.erase)
+        case TPushList(_, items) => PushList(items.map(_.erase))
+        case TFunApply(_, name) => FunApply(name)
+        case TPushQuote(term) => Quote(term.erase)
+        case TNameTopN(_, names) => NameTopN(names)
+        case TPushPrim(ty, value) => PushPrim(ty, value)
+        case TEvalBarrier(te) => OpaqueExpr(te)
+      res.setPos(this.pos)
 
     override def toString: String = this match
       case TChain(stackTy, a, b) => s"(($a $b) : $stackTy)"
@@ -49,15 +52,25 @@ package types {
       case TFunApply(stackTy, name) => s"($name : $stackTy)"
       case t@TPushQuote(term) => s"({$term} : ${t.stackTy})"
       case TNameTopN(stackTy, names) => names.zip(stackTy.consumes).map((s, dt) => s"$s: $dt").mkString("-> ", ", ", ";")
+      case TEvalBarrier(te) => te.toString
   }
+
   case class TChain(override val stackTy: StackType, a: TypedExpr, b: TypedExpr) extends TypedExpr
+
+  case class TEvalBarrier(e: TypedExpr) extends TypedExpr {
+    override def stackTy: StackType = e.stackTy
+  }
+
   case class TPushList(ty: types.KList, items: List[TypedExpr]) extends TypedExpr {
     override def stackTy: StackType = StackType.pushOne(ty)
   }
+
   case class TPushPrim[T](ty: types.KPrimitive[T], value: T) extends TypedExpr {
     override def stackTy: StackType = StackType.pushOne(ty)
   }
+
   case class TFunApply(override val stackTy: StackType, name: String) extends TypedExpr
+
   case class TPushQuote(term: TypedExpr) extends TypedExpr {
     override def stackTy: StackType = StackType.pushOne(KFun(term.stackTy))
   }
@@ -269,6 +282,7 @@ package types {
         case TFunApply(stackTy, name) => TFunApply(substStackType(stackTy), name)
         case TPushQuote(term) => TPushQuote(substTerm(term))
         case TNameTopN(stackTy, names) => TNameTopN(substStackType(stackTy), names)
+        case TEvalBarrier(term) => TEvalBarrier(substTerm(term))
       res.setPos(te.pos)
 
   }
@@ -591,12 +605,14 @@ package types {
         case Left(err) => Left(err.setPos(node.pos))
         case Right(ty) => Right((typeFunApply(ty).setPos(node.pos), scope))
 
+    case OpaqueExpr(te) => Right((TEvalBarrier(te).setPos(node.pos), scope))
     case Chain(left, right) =>
       for {
         (leftTree, leftScope) <- assignTypeRec(scope)(left)
         (rightTree, rightScope) <- assignTypeRec(leftScope)(right)
         newEnv <- {
           def toIvarSubst = scope.ctx.toIvarSubst
+
           val (leftI, rightI) = (toIvarSubst.substTerm(leftTree), toIvarSubst.substTerm(rightTree))
           val (ta, tb) = (toIvarSubst.substStackType(leftI.stackTy.canonicalize), toIvarSubst.substStackType(rightI.stackTy.canonicalize))
 

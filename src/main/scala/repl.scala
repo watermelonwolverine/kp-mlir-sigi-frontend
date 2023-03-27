@@ -16,39 +16,52 @@ package repl {
     val scanner = scala.io.StdIn
 
     def showSomethingNice(before: Env, after: Env)(t: TypedStmt): Unit = t match
+      case TExprStmt(TChain(_, TEvalBarrier(_), term)) => showSomethingNice(before, after)(TExprStmt(term))
       case TExprStmt(e) =>
-      // val consumed = before.stack.take(e.stackTy.consumes.length).reverseIterator.mkString(", ")
-      // val produced = after.stack.take(e.stackTy.produces.length).reverseIterator.mkString(", ")
-      // println(s"$consumed -> $produced")
+        val consumed = before.stack.take(e.stackTy.consumes.length).reverseIterator.mkString(", ")
+        val produced = after.stack.take(e.stackTy.produces.length).reverseIterator.mkString(", ")
+        println(e.stackTy)
+        println(s"$consumed -> $produced".trim)
 
       case TFunDef(name, ty, _) => println(s"Defined function $name: $ty")
       case TBlock(st) => st.foreach(showSomethingNice(before, after)) // todo this does not work! the environments are different
 
-    @tailrec
-    def doRepl(line: String, env: Env): Unit = {
-      if (line == "exit") return
 
-      val result: Either[SigiError, Env] = for {
+    def chainWithLastExpr(typedStmt: KStatement, lastExpr: Option[TypedExpr]): KStatement = {
+      (typedStmt, lastExpr) match
+        case (KExprStatement(expr), Some(last)) => KExprStatement(Chain(OpaqueExpr(last), expr))
+        case _ => typedStmt
+    }
+
+    @tailrec
+    def doRepl(line: String, env: Env, lastExpr: Option[TypedExpr]): Unit = {
+      if (line == "exit" || line == ":wq" || line == ":q" || line == "/exit") return
+
+      val result: Either[SigiError, (Env, TypedStmt)] = for {
         parsed <- SigiParser.parseStmt(line)
-        typed <- doValidation(env.toTypingScope)(parsed)
+        chained = chainWithLastExpr(parsed, lastExpr)
+        typed <- doValidation(env.toTypingScope)(chained)
         env2 <- eval(typed)(env)
       } yield {
         showSomethingNice(env, env2)(typed)
-        env2
+        (env2, typed)
       }
 
-      val newEnv: Env = result match
-        case Right(e) => e
+      val (newEnv, newLastExpr) = result match
+        case Right((env2, TExprStmt(te))) => (env2, Some(te))
+        case Right((env2, _)) => (env2, lastExpr)
         case Left(error) =>
           println(error)
-          env
+          (env, lastExpr)
 
       print("> ")
-      doRepl(scanner.readLine(), newEnv)
+      doRepl(scanner.readLine(), newEnv, newLastExpr)
     }
 
     print("> ")
-    doRepl(scanner.readLine(), Env.Default.copy(vars = Env.Default.vars ++ builtins.ReplBuiltins))
+    doRepl(scanner.readLine(),
+           env = Env.Default.copy(vars = Env.Default.vars ++ builtins.ReplBuiltins),
+           lastExpr = None)
   }
 
 
@@ -148,6 +161,7 @@ package repl {
       })
     case TFunApply(_, name) => env(name).flatMap(applyValue(env))
     case TChain(_, a, b) => eval(a)(env).flatMap(e2 => eval(b)(e2))
+    case TEvalBarrier(_) => Right(env) // do nothing, already evaluated
     case TPushQuote(e) => Right(env.push(VFun(Some("(quote)"), e.stackTy, eval(e))))
     case node@TNameTopN(_, names) =>
       val (topOfStack, stackTail) = env.stack.splitAt(names.length)

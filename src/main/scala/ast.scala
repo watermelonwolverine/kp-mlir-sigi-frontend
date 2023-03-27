@@ -8,10 +8,9 @@ package ast {
   import scala.annotation.tailrec
   import scala.util.matching.Regex
   import scala.util.parsing.combinator.{PackratParsers, Parsers, RegexParsers}
-  import scala.util.parsing.input.{NoPosition, Position, Reader, Positional}
-
+  import scala.util.parsing.input.{NoPosition, Position, Positional, Reader}
   import tokens.*
-  import types.{KDataType, KFun, KPrimitive, StackType}
+  import types.{KDataType, KFun, KPrimitive, StackType, TypedExpr}
 
   import de.cfaed.sigi.tokens
 
@@ -34,6 +33,7 @@ package ast {
     setPos(e.pos)
   }
 
+
   /** The result of parsing a type. Some of the components may be unresolved.
     * Semantic analysis lifts this into a [[types.KStackTypeItem]] in [[types.resolveType]].
     */
@@ -51,15 +51,30 @@ package ast {
       case NameTopN(names) => names.mkString("-> ", ", ", ";")
       case PushList(items) => items.mkString("[", ", ", "]")
       case Quote(term) => s"{ $term }"
+      case OpaqueExpr(te) => s"(${te.erase.toString} : ${te.stackTy})"
   }
 
-  case class Chain(a: KExpr, b: KExpr) extends KExpr
+  case class Chain(a: KExpr, b: KExpr) extends KExpr {
+    setPos(a.pos)
+  }
+
   case class PushPrim[T](ty: KPrimitive[T], value: T) extends KExpr
+
   case class PushList(items: List[KExpr]) extends KExpr
+
   case class FunApply(name: String) extends KExpr
+
+  /** This is an already typed expr wrapped as a kexpr.
+    * Used in the repl to chain partial typing results.
+    */
+  case class OpaqueExpr(te: TypedExpr) extends KExpr {
+    setPos(te.pos)
+  }
+
   case class Quote(term: KExpr) extends KExpr {
     setPos(term.pos)
   }
+
   case class NameTopN(names: List[String]) extends KExpr {
     def stackType: StackType = StackType.generic(newTVar => {
       StackType(consumes = names.map(_ => newTVar()))
@@ -165,8 +180,14 @@ package ast {
       rep1(sequenceableExpr) ^^ (_ reduceLeft Chain.apply)
 
     private def expr: Parser[KExpr] = exprSeq
+
     private def statement: Parser[KStatement] = funDef | expr <~ PHAT_SEMI.? ^^ KExprStatement.apply
-    private def statementList: Parser[KBlock] = rep(statement) ^^ KBlock.apply
+
+    private def statementList: Parser[KStatement] = rep(statement) ^^ {
+      case List(st) => st
+      case stmts => KBlock(stmts)
+    }
+
     private def file: Parser[KFile] = rep(funDef) ~ expr <~ PHAT_SEMI.? ^^ {
       case (funs: List[KFunDef]) ~ (expr: KExpr) => KFile(funs, expr)
     }

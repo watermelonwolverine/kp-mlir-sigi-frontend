@@ -225,7 +225,7 @@ package emitmlir {
           println(s"$nextEnv = closure.call ${pop.outVal} : ${MlirBuilder.ClosureT}")
 
         // general case of function calls.
-        //  todo monomorphise generic calls
+        //  todo monomorphise generic calls, make sure all terms are ground
         case TFunApply(ty, name) =>
           // assume the function has been emitted with the given name (this is after monomorphisation)
 
@@ -279,11 +279,10 @@ package emitmlir {
   - Each expression is technically a function of type (!sigi.env -> !sigi.env). Most of them are
    generated inline though. We use the statement as a codegen boundary because it's also a scoping
    boundary.
-  - Each statement is generated into its own func of type (!sigi.env -> !sigi.env)
-  - The body of each quote is generated as its own func of type (!sigi.env -> !sigi.env)
-    - Let's say for simplicity's sake that quotes do not capture their environment.
-      TODO implement that in the verification rules: quotes cannot refer to names that are not defined
-        in the top-level scope.
+  - Each function is generated into its own func of type (!sigi.env -> !sigi.env)
+  - Each quote is mapped to a !closure.box<!sigi.env -> !sigi.env>
+    - they may capture their environment. This makes memory safety complicated, in the general
+    case we need garbage collection. Let's restrict quotes to only capture closures and integers.
   - Function calls (= variable access):
     - builtins map to builtin operators of the sigi dialect
     - user-defined funs must have a static binding.
