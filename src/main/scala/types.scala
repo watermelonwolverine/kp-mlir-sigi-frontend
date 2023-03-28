@@ -625,7 +625,8 @@ package types {
               val (prod, _) = ta2.produces.splitAtRight(commonLen)
               val (cons, _) = tb2.consumes.splitAtRight(commonLen)
 
-              StackType(consumes = cons ++ ta2.consumes, produces = prod ++ tb2.produces)
+              StackType(consumes = cons ++ ta2.consumes,
+                        produces = prod ++ tb2.produces)
             })
             .map { it =>
               // Here the ground gives a more specific type to the tree branches.
