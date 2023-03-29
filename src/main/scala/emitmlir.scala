@@ -26,15 +26,19 @@ package emitmlir {
     override def toString: String = "%" + prefix + id
 
   }
+
   class MlirSymbol(prefix: String)(id: Int) extends MlirValue, Comparable[MlirSymbol] {
     val simpleName: String = prefix + id
+
     override def toString: String = "@" + simpleName
+
     override def compareTo(o: MlirSymbol): Int = simpleName.compareTo(o.simpleName)
 
   }
 
-  class IdGenerator[T](maker: Int => T) {
-    private var seqNumber = 0
+  class IdGenerator[T](start: Int, maker: Int => T) {
+    private var seqNumber = start
+
     def cur: T = maker(seqNumber)
 
     def next(): T = {
@@ -43,7 +47,7 @@ package emitmlir {
     }
 
     def reset(): Unit = {
-      seqNumber = 0
+      seqNumber = start
     }
   }
 
@@ -60,22 +64,28 @@ package emitmlir {
   }
 
   class MPushOp(val ty: KStackTypeItem | String,
-                envIdGen: IdGenerator[MlirIdent],
+                val inEnv: MlirIdent,
+                val outEnv: MlirIdent,
                 val inVal: MlirIdent) extends SigiDialectOp {
-    val inEnv: MlirIdent = envIdGen.cur
-    val outEnv: MlirIdent = envIdGen.next()
+
+    def this(ty: KStackTypeItem | String,
+             envIdGen: IdGenerator[MlirIdent],
+             inVal: MlirIdent) = this(ty, envIdGen.cur, envIdGen.next(), inVal)
   }
 
 
-  class MlirBuilder(val out: PrintStream, private var indent: Int = 0) {
+  class MlirBuilder(val out: PrintStream,
+                    private var indent: Int = 0,
+                    startEnv: Int = 0,
+                    startVal: Int = 0) {
     /** Ident of the environment. */
-    private val envIdGen = IdGenerator(new MlirIdent("e")(_))
+    private val envIdGen = IdGenerator(startEnv, new MlirIdent("e")(_))
     /** Ident for regular values. */
-    private val valIdGen = IdGenerator(new MlirIdent("")(_))
+    private val valIdGen = IdGenerator(startVal, new MlirIdent("")(_))
 
     private val localSymEnv = mutable.Map[String, MlirIdent]()
 
-    def resetLocals(): Unit = {
+    private def resetLocals(): Unit = {
       envIdGen.reset()
       valIdGen.reset()
       localSymEnv.clear()
@@ -141,7 +151,7 @@ package emitmlir {
       * Assumptions: every name is unique in the given term.
       *
       */
-    def emitExpr(t: TypedExpr): Unit =
+    private def emitExpr(t: TypedExpr): Unit =
       val envId = envIdGen.cur
       t match
         case TChain(_, a, b) =>
@@ -237,7 +247,6 @@ package emitmlir {
         case TPushQuote(term) =>
           val cstId = valIdGen.next()
 
-          val push = new MPushOp(MlirBuilder.ClosureT, envIdGen, cstId)
           val closureEnv = envIdGen.next()
           println(s"$cstId = closure.box ($closureEnv : !sigi.stack) -> !sigi.stack { // ${term.stackTy}")
           indent += 1
@@ -245,6 +254,7 @@ package emitmlir {
           println(s"closure.return ${envIdGen.cur}: !sigi.stack")
           indent -= 1
           println(s"}")
+          val push = new MPushOp(MlirBuilder.ClosureT, envId, envIdGen.next(), cstId)
           renderOp(push)
 
         case TNameTopN(stackTy, names) =>
