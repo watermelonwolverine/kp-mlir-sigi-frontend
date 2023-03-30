@@ -23,12 +23,12 @@ package emitmlir {
 
   }
 
-  class MlirIdent(prefix: String)(id: Int) extends MlirValue {
+  class MlirIdent(prefix: String)(id: String) extends MlirValue {
     override def toString: String = "%" + prefix + id
 
   }
 
-  class MlirSymbol(prefix: String)(id: Int) extends MlirValue, Comparable[MlirSymbol] {
+  class MlirSymbol(prefix: String)(id: String) extends MlirValue, Comparable[MlirSymbol] {
     val simpleName: String = prefix + id
 
     override def toString: String = "@" + simpleName
@@ -37,42 +37,37 @@ package emitmlir {
 
   }
 
-  class IdGenerator[T](start: Int, maker: Int => T) {
-    private var seqNumber = start
+  class IdGenerator[T](start: Int, maker: String => T) {
+    private var seqNumber: Int = _
+    private var curImpl: T = _
+    reset()
 
-    def cur: T = maker(seqNumber)
+    def cur: T = curImpl
 
-    def next(): T = {
+    def next(suffix: String = ""): T = {
       seqNumber += 1
+      curImpl = maker(seqNumber.toString + suffix)
       cur
     }
 
     def reset(): Unit = {
       seqNumber = start
+      curImpl = maker(start.toString)
     }
   }
 
   // helper type that represents a push operation
   sealed trait SigiDialectOp
 
-  class MPopOp(val ty: KStackTypeItem | String,
-               envIdGen: IdGenerator[MlirIdent],
-               valIdGen: IdGenerator[MlirIdent]) extends SigiDialectOp {
-    val inEnv: MlirIdent = envIdGen.cur
-    val outEnv: MlirIdent = envIdGen.next()
+  class MPopOp(val ty: String,
+               val inEnv: MlirIdent,
+               val outEnv: MlirIdent,
+               val outVal: MlirIdent) extends SigiDialectOp
 
-    val outVal: MlirIdent = valIdGen.next()
-  }
-
-  class MPushOp(val ty: KStackTypeItem | String,
+  class MPushOp(val ty: String,
                 val inEnv: MlirIdent,
                 val outEnv: MlirIdent,
-                val inVal: MlirIdent) extends SigiDialectOp {
-
-    def this(ty: KStackTypeItem | String,
-             envIdGen: IdGenerator[MlirIdent],
-             inVal: MlirIdent) = this(ty, envIdGen.cur, envIdGen.next(), inVal)
-  }
+                val inVal: MlirIdent) extends SigiDialectOp
 
 
   class MlirBuilder(val out: PrintStream,
@@ -84,7 +79,7 @@ package emitmlir {
     /** Ident for regular values. */
     private val valIdGen = IdGenerator(startVal, new MlirIdent("")(_))
 
-    case class LocalSymDesc(sourceName: String, mlirName: MlirIdent, mlirType: String)
+    private case class LocalSymDesc(sourceName: String, mlirName: MlirIdent, mlirType: String)
 
     /** Map of variable name (Sigi) to mlir ident for those
       * variables that were put on the
@@ -136,21 +131,30 @@ package emitmlir {
     private def renderOp(op: SigiDialectOp, comment: String = ""): Unit = {
       val realComment = if comment.isEmpty then "" else s" // $comment"
 
-      def typeToStr(t: String | KStackTypeItem) = t match
-        case s: String => s
-        case t: KStackTypeItem => mlirType(t)
-
       op match
         case op: MPopOp =>
-          println(s"${op.outEnv}, ${op.outVal} = sigi.pop ${op.inEnv}: ${typeToStr(op.ty)}$realComment")
+          println(s"${op.outEnv}, ${op.outVal} = sigi.pop ${op.inEnv}: ${op.ty}$realComment")
         case op: MPushOp =>
-          println(s"${op.outEnv} = sigi.push ${op.inEnv}, ${op.inVal}: ${typeToStr(op.ty)}$realComment")
+          println(s"${op.outEnv} = sigi.push ${op.inEnv}, ${op.inVal}: ${op.ty}$realComment")
     }
 
-    private def renderPush(ty: KStackTypeItem,
-                           envIdGen: IdGenerator[MlirIdent],
-                           inVal: MlirIdent,
-                           comment: String = ""): Unit = renderOp(new MPushOp(ty, envIdGen, inVal), comment)
+    private def typeToStr(t: String | KStackTypeItem) = t match
+      case s: String => s
+      case t: KStackTypeItem => mlirType(t)
+
+    private def renderPush(ty: KStackTypeItem | String, inVal: MlirIdent, comment: String = ""): Unit =
+      val push = new MPushOp(ty = typeToStr(ty),
+                             inEnv = envIdGen.cur,
+                             outEnv = envIdGen.next(),
+                             inVal = inVal)
+      renderOp(push, comment)
+
+    private def makePop(ty: KStackTypeItem | String,
+                        valueNameSuffix: String = ""): MPopOp =
+      new MPopOp(ty = typeToStr(ty),
+                 inEnv = envIdGen.cur,
+                 outEnv = envIdGen.next(),
+                 outVal = valIdGen.next(valueNameSuffix))
 
     /**
       * Contract: before this fun is invoked, the [[envIdGen]] is the ID of the last environment.
@@ -169,7 +173,7 @@ package emitmlir {
         case TPushList(ty, items) =>
           val itemIds = for (item <- items) yield {
             emitExpr(item)
-            val pop = new MPopOp(ty.item, envIdGen, valIdGen)
+            val pop = makePop(ty.item)
             renderOp(pop)
             pop.outVal
           }
@@ -179,7 +183,7 @@ package emitmlir {
           val mlirTy = mlirType(ty)
 
           println(s"$listId = sigi.create_list $args: $mlirTy")
-          renderPush(ty, envIdGen, listId)
+          renderPush(ty, listId)
 
         case TPushPrim(ty, value) if ty == KBool || ty == KInt =>
           val cstId = valIdGen.next()
@@ -187,7 +191,7 @@ package emitmlir {
           val mlirTy = mlirType(ty)
 
           println(s"$cstId = arith.constant $cstAttr: $mlirTy")
-          renderPush(ty, envIdGen, cstId)
+          renderPush(ty, cstId)
 
         case TPushPrim(ty, value) =>
           val cstId = valIdGen.next()
@@ -195,21 +199,21 @@ package emitmlir {
           val mlirTy = mlirType(ty)
 
           println(s"$cstId = sigi.constant $cstAttr: $mlirTy")
-          renderPush(ty, envIdGen, cstId)
+          renderPush(ty, cstId)
 
 
         // just pushing one item
         case TFunApply(StackType(Nil, List(ty)), name) =>
           localSymEnv.get(name) match
-            case Some(LocalSymDesc(_, mlirId, _)) => renderPush(ty, envIdGen, mlirId, comment = name)
+            case Some(LocalSymDesc(_, mlirId, _)) => renderPush(ty, mlirId, comment = name)
             case None =>
               val errId = envIdGen.next()
               println(s"$errId = sigi.error $envId, {msg=\"undefined name '$name'\"}")
 
         // builtin arithmetic and comparisons
         case TFunApply(StackType(List(a@(KInt | KBool), b), List(c)), name) if a == b && BuiltinIntOps.contains(name) =>
-          val pop0 = new MPopOp(b, envIdGen, valIdGen)
-          val pop1 = new MPopOp(a, envIdGen, valIdGen)
+          val pop0 = makePop(b)
+          val pop1 = makePop(a)
 
           val result = valIdGen.next()
           val builtinOp = BuiltinIntOps(name)
@@ -217,29 +221,29 @@ package emitmlir {
           renderOp(pop0)
           renderOp(pop1)
           println(s"$result = $builtinOp ${pop0.outVal}, ${pop1.outVal}: ${mlirType(a)}")
-          renderPush(c, envIdGen, result)
+          renderPush(c, result)
 
         // intrinsics
         case TFunApply(StackType(List(a), _), "dup") =>
-          val pop = new MPopOp(a, envIdGen, valIdGen)
+          val pop = makePop(a)
           renderOp(pop)
-          renderPush(a, envIdGen, pop.outVal)
-          renderPush(a, envIdGen, pop.outVal)
+          renderPush(a, pop.outVal)
+          renderPush(a, pop.outVal)
 
         case TFunApply(StackType(List(a), _), "pop") =>
-          renderOp(new MPopOp(a, envIdGen, valIdGen))
+          renderOp(makePop(a))
 
         case TFunApply(StackType(List(a, b), _), "swap") =>
-          val popb = new MPopOp(b, envIdGen, valIdGen)
-          val popa = new MPopOp(a, envIdGen, valIdGen)
+          val popb = makePop(b)
+          val popa = makePop(a)
           renderOp(popb)
           renderOp(popa)
-          renderPush(b, envIdGen, popb.outVal)
-          renderPush(a, envIdGen, popa.outVal)
+          renderPush(b, popb.outVal)
+          renderPush(a, popa.outVal)
 
         // higher-order function.
         case TFunApply(_, "apply") =>
-          val pop = new MPopOp(MlirBuilder.ClosureT, envIdGen, valIdGen)
+          val pop = makePop(MlirBuilder.ClosureT)
           renderOp(pop)
           val nextEnv = envIdGen.next()
           println(s"$nextEnv = closure.call ${pop.outVal} (${pop.outEnv}) : ${MlirBuilder.ClosureT}")
@@ -251,18 +255,19 @@ package emitmlir {
 
           val escapedName = if name.matches("[a-zA-Z]\\w*") then name else s"\"$name\""
           val resultEnv = envIdGen.next()
-          println(s"$resultEnv = func.call @$escapedName($envId) : $TargetFunType")
+          println(s"$resultEnv = func.call @$escapedName($envId) : $TargetFunType // $ty")
 
 
         case TPushQuote(term) =>
 
           val freeVars = collectFreeVars(term)
           val capturedVars = localSymEnv.view.filterKeys(freeVars)
+          val prevBindings = capturedVars.toMap // save previous bindings
           val capturedArgsMlir = ListBuffer.empty[String]
           val capturedVarsWithNewIds = capturedVars.map { e =>
             val (name, LocalSymDesc(sourceName, mlirId, mlirType)) = e
             // give the variable a fresh name
-            val captId = valIdGen.next() // todo derive mlir id from symbol name for readability
+            val captId = valIdGen.next(s"_$sourceName")
             capturedArgsMlir += s"$captId = $mlirId : $mlirType"
             (name, LocalSymDesc(sourceName, captId, mlirType))
           }.toMap
@@ -279,16 +284,14 @@ package emitmlir {
           println(s"closure.return ${envIdGen.cur}: !sigi.stack")
           indent -= 1
           println(s"}")
-          val push = new MPushOp(MlirBuilder.ClosureT, envId, envIdGen.next(), cstId)
-          renderOp(push)
+          renderPush(MlirBuilder.ClosureT, cstId)
 
-          // remove those temporary bindings. Since we eliminated shadowing
-          // by deduplicating names, this is not technically necessary
-          this.localSymEnv --= capturedVarsWithNewIds.keys
+          // restore previous bindings
+          this.localSymEnv ++= prevBindings
 
         case TNameTopN(stackTy, names) =>
           for ((name, ty) <- names.zip(stackTy.consumes)) {
-            val pop = new MPopOp(ty, envIdGen, valIdGen)
+            val pop = makePop(ty, valueNameSuffix = s"_$name")
             val desc = LocalSymDesc(sourceName = name, mlirName = pop.outVal, mlirType = mlirType(ty))
             localSymEnv.put(name, desc)
             renderOp(pop, comment = name)
