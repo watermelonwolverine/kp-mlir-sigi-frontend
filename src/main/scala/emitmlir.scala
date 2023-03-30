@@ -16,6 +16,7 @@ package emitmlir {
 
   import de.cfaed.sigi.emitmlir.MlirBuilder.{BuiltinIntOps, TargetFunType}
 
+  import scala.collection.mutable.ListBuffer
   import scala.io.Source
 
   sealed trait MlirValue {
@@ -83,7 +84,13 @@ package emitmlir {
     /** Ident for regular values. */
     private val valIdGen = IdGenerator(startVal, new MlirIdent("")(_))
 
-    private val localSymEnv = mutable.Map[String, MlirIdent]()
+    case class LocalSymDesc(sourceName: String, mlirName: MlirIdent, mlirType: String)
+
+    /** Map of variable name (Sigi) to mlir ident for those
+      * variables that were put on the
+      * runtime stack by a [[TNameTopN]] node.
+      */
+    private val localSymEnv = mutable.Map[String, LocalSymDesc]()
 
     private def resetLocals(): Unit = {
       envIdGen.reset()
@@ -119,7 +126,8 @@ package emitmlir {
       println(s"// $name: $ty")
       println(s"func.func @$name(${envIdGen.cur}: !sigi.stack) -> !sigi.stack {")
       indent += 1
-      this.emitExpr(body)
+      val uniqued = makeNamesUnique(body)
+      this.emitExpr(uniqued)
       println(s"return ${envIdGen.cur}: !sigi.stack")
       indent -= 1
       println(s"}")
@@ -142,7 +150,7 @@ package emitmlir {
     private def renderPush(ty: KStackTypeItem,
                            envIdGen: IdGenerator[MlirIdent],
                            inVal: MlirIdent,
-                           comment:String = ""): Unit = renderOp(new MPushOp(ty, envIdGen, inVal), comment)
+                           comment: String = ""): Unit = renderOp(new MPushOp(ty, envIdGen, inVal), comment)
 
     /**
       * Contract: before this fun is invoked, the [[envIdGen]] is the ID of the last environment.
@@ -193,7 +201,7 @@ package emitmlir {
         // just pushing one item
         case TFunApply(StackType(Nil, List(ty)), name) =>
           localSymEnv.get(name) match
-            case Some(valueId) => renderPush(ty, envIdGen, valueId, comment = name)
+            case Some(LocalSymDesc(_, mlirId, _)) => renderPush(ty, envIdGen, mlirId, comment = name)
             case None =>
               val errId = envIdGen.next()
               println(s"$errId = sigi.error $envId, {msg=\"undefined name '$name'\"}")
@@ -211,6 +219,7 @@ package emitmlir {
           println(s"$result = $builtinOp ${pop0.outVal}, ${pop1.outVal}: ${mlirType(a)}")
           renderPush(c, envIdGen, result)
 
+        // intrinsics
         case TFunApply(StackType(List(a), _), "dup") =>
           val pop = new MPopOp(a, envIdGen, valIdGen)
           renderOp(pop)
@@ -228,11 +237,12 @@ package emitmlir {
           renderPush(b, envIdGen, popb.outVal)
           renderPush(a, envIdGen, popa.outVal)
 
+        // higher-order function.
         case TFunApply(_, "apply") =>
           val pop = new MPopOp(MlirBuilder.ClosureT, envIdGen, valIdGen)
           renderOp(pop)
           val nextEnv = envIdGen.next()
-          println(s"$nextEnv = closure.call ${pop.outVal} : ${MlirBuilder.ClosureT}")
+          println(s"$nextEnv = closure.call ${pop.outVal} (${pop.outEnv}) : ${MlirBuilder.ClosureT}")
 
         // general case of function calls.
         //  todo monomorphise generic calls, make sure all terms are ground
@@ -245,10 +255,25 @@ package emitmlir {
 
 
         case TPushQuote(term) =>
-          val cstId = valIdGen.next()
 
+          val freeVars = collectFreeVars(term)
+          val capturedVars = localSymEnv.view.filterKeys(freeVars)
+          val capturedArgsMlir = ListBuffer.empty[String]
+          val capturedVarsWithNewIds = capturedVars.map { e =>
+            val (name, LocalSymDesc(sourceName, mlirId, mlirType)) = e
+            // give the variable a fresh name
+            val captId = valIdGen.next() // todo derive mlir id from symbol name for readability
+            capturedArgsMlir += s"$captId = $mlirId : $mlirType"
+            (name, LocalSymDesc(sourceName, captId, mlirType))
+          }.toMap
+
+          // replace those keys
+          this.localSymEnv ++= capturedVarsWithNewIds
+          val capturedArgsToString = capturedArgsMlir.mkString(", ")
+
+          val cstId = valIdGen.next()
           val closureEnv = envIdGen.next()
-          println(s"$cstId = closure.box ($closureEnv : !sigi.stack) -> !sigi.stack { // ${term.stackTy}")
+          println(s"$cstId = closure.box [$capturedArgsToString] ($closureEnv : !sigi.stack) -> !sigi.stack { // ${term.stackTy}")
           indent += 1
           emitExpr(term)
           println(s"closure.return ${envIdGen.cur}: !sigi.stack")
@@ -257,17 +282,87 @@ package emitmlir {
           val push = new MPushOp(MlirBuilder.ClosureT, envId, envIdGen.next(), cstId)
           renderOp(push)
 
+          // remove those temporary bindings. Since we eliminated shadowing
+          // by deduplicating names, this is not technically necessary
+          this.localSymEnv --= capturedVarsWithNewIds.keys
+
         case TNameTopN(stackTy, names) =>
           for ((name, ty) <- names.zip(stackTy.consumes)) {
             val pop = new MPopOp(ty, envIdGen, valIdGen)
-            localSymEnv.put(name, pop.outVal)
+            val desc = LocalSymDesc(sourceName = name, mlirName = pop.outVal, mlirType = mlirType(ty))
+            localSymEnv.put(name, desc)
             renderOp(pop, comment = name)
           }
+
+        case TEvalBarrier(_) => throw UnsupportedOperationException("Eval barrier is only for the REPL")
+
+    /** Makes all names defined within this term unique, so as
+      * to remove name shadowing entirely.
+      */
+    private def makeNamesUnique(term: TypedExpr): TypedExpr = {
+      case class DedupVarScope(map: Map[String, String]) extends (String => String) {
+        override def apply(name: String): String = map.getOrElse(name, name)
+
+        def makeUnique(names: IterableOnce[String]): DedupVarScope = {
+          val newMap = names.iterator.foldLeft(map) { (map, name) =>
+            map + (name -> map.get(name).map(_ + "x").getOrElse(name))
+          }
+          DedupVarScope(newMap)
+        }
+      }
+
+      def makeNamesUniqueRec(scope: DedupVarScope, term: TypedExpr): (DedupVarScope, TypedExpr) = {
+        term match
+          case TChain(ty, a, b) =>
+            val (aScope, newA) = makeNamesUniqueRec(scope, a)
+            val (bScope, newB) = makeNamesUniqueRec(aScope, b)
+            (bScope, TChain(ty, newA, newB))
+          case TFunApply(ty, name) => (scope, TFunApply(ty, scope(name)))
+          case TNameTopN(ty, names) =>
+            val dedupedNames = scope.makeUnique(names)
+            (dedupedNames, TNameTopN(ty, names.map(dedupedNames)))
+          case TPushList(ty, items) =>
+            val (lastScope, newItems) = items.foldLeft((scope, List[TypedExpr]())) { (prev, item) =>
+              val (scope, newItems) = prev
+              val (scope2, newItem) = makeNamesUniqueRec(scope, item)
+              (scope2, newItem :: newItems)
+            }
+            (lastScope, TPushList(ty, newItems))
+          case TPushQuote(term) =>
+            val (tscope, newTerm) = makeNamesUniqueRec(scope, term)
+            (tscope, TPushQuote(newTerm))
+          case term => (scope, term)
+      }
+
+      makeNamesUniqueRec(DedupVarScope(Map()), term)._2
+    }
+
+    /**
+      * Collects all free vars within a term.
+      * This is used to determine captured variables in a closure.
+      */
+    private def collectFreeVars(term: TypedExpr): Set[String] = {
+      case class VarScope(used: Set[String], bound: Set[String])
+
+      def collectFreeVarsRec(term: TypedExpr, scope: VarScope): VarScope = {
+        term match
+          case TChain(_, a, b) =>
+            val aScope = collectFreeVarsRec(a, scope)
+            collectFreeVarsRec(b, aScope)
+          case TFunApply(_, name) => scope.copy(used = scope.used + name)
+          case TNameTopN(_, names) => scope.copy(bound = scope.bound ++ names)
+          // no other term affects scope
+          case _ => scope
+      }
+
+      val VarScope(used, bound) = collectFreeVarsRec(term, VarScope(Set.empty, Set.empty))
+      used -- bound
+    }
   }
 
   object MlirBuilder {
-    private val TargetFunType = "!sigi.stack -> !sigi.stack"
-    private val ClosureT = "!closure.box<!sigi.stack -> !sigi.stack>"
+    private val TargetFunType = "(!sigi.stack) -> !sigi.stack"
+    private val ClosureT = s"!closure.box<$TargetFunType>"
     private val BuiltinIntOps = Map(
       "+" -> "arith.addi",
       "-" -> "arith.subi",
@@ -281,17 +376,17 @@ package emitmlir {
 
       "=" -> "arith.cmpi \"eq\",",
       "<>" -> "arith.cmpi \"ne\",",
-    )
+      )
 
   }
 
   /*
   Overview of generation steps:
-  - Each expression is technically a function of type (!sigi.stack -> !sigi.stack). Most of them are
+  - Each expression is technically a function of type ((!sigi.stack) -> !sigi.stack). Most of them are
    generated inline though. We use the statement as a codegen boundary because it's also a scoping
    boundary.
-  - Each function is generated into its own func of type (!sigi.stack -> !sigi.stack)
-  - Each quote is mapped to a !closure.box<!sigi.stack -> !sigi.stack>
+  - Each function is generated into its own func of type ((!sigi.stack) -> !sigi.stack)
+  - Each quote is mapped to a !closure.box<(!sigi.stack) -> !sigi.stack>
     - they may capture their environment. This makes memory safety complicated, in the general
     case we need garbage collection. Let's restrict quotes to only capture closures and integers.
   - Function calls (= variable access):
@@ -330,8 +425,8 @@ package emitmlir {
 
   @main
   def sigiToMlir(): Unit = parseSigiAndEmitMlir(System.out)(io.Source.stdin)
-//  @main
-//  def testDumping(): Unit = parseSigiAndEmitMlir(System.out)(io.Source.fromString("true == false"))
+  @main
+  def testDumping(): Unit = parseSigiAndEmitMlir(System.out)(io.Source.fromString("1 -> x; { x } 2 -> x; { x }"))
 
 
 }
