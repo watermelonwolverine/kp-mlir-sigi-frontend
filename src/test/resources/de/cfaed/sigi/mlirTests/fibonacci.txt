@@ -14,7 +14,7 @@ module {
             %e8 = sigi.push %e7, %7: i32
             closure.return %e8: !sigi.stack
         }
-        %e9 = sigi.push %e8, %6: !closure.box<(!sigi.stack) -> !sigi.stack>
+        %e9 = sigi.push %e6, %6: !closure.box<(!sigi.stack) -> !sigi.stack>
         %9 = closure.box [%8_n = %1_n : i32] (%e10 : !sigi.stack) -> !sigi.stack { // -> int
             %e11 = sigi.push %e10, %8_n: i32 // n
             %10 = arith.constant 2: i32
@@ -38,7 +38,7 @@ module {
             %e25 = sigi.push %e24, %20: i32
             closure.return %e25: !sigi.stack
         }
-        %e26 = sigi.push %e25, %9: !closure.box<(!sigi.stack) -> !sigi.stack>
+        %e26 = sigi.push %e9, %9: !closure.box<(!sigi.stack) -> !sigi.stack>
         %e27 = func.call @":if:"(%e26) : (!sigi.stack) -> !sigi.stack // bool, (-> int), (-> int) -> int
         return %e27: !sigi.stack
     }
@@ -67,7 +67,7 @@ module {
             %e10 = sigi.push %e9, %8_a: i32 // a
             closure.return %e10: !sigi.stack
         }
-        %e11 = sigi.push %e10, %9: !closure.box<(!sigi.stack) -> !sigi.stack>
+        %e11 = sigi.push %e8, %9: !closure.box<(!sigi.stack) -> !sigi.stack>
         %11 = closure.box [%10_n = %1_n : i32] (%e12 : !sigi.stack) -> !sigi.stack { // -> int
             %e13 = sigi.push %e12, %10_n: i32 // n
             %12 = arith.constant 1: i32
@@ -80,7 +80,7 @@ module {
                 %e19 = sigi.push %e18, %16_b: i32 // b
                 closure.return %e19: !sigi.stack
             }
-            %e20 = sigi.push %e19, %17: !closure.box<(!sigi.stack) -> !sigi.stack>
+            %e20 = sigi.push %e17, %17: !closure.box<(!sigi.stack) -> !sigi.stack>
             %21 = closure.box [%18_a = %2_a : i32, %19_b = %3_b : i32, %20_n = %10_n : i32] (%e21 : !sigi.stack) -> !sigi.stack { // -> int
                 %e22 = sigi.push %e21, %20_n: i32 // n
                 %22 = arith.constant 1: i32
@@ -99,11 +99,11 @@ module {
                 %e33 = func.call @fib_tailrec_helper(%e32) : (!sigi.stack) -> !sigi.stack // int, int, int -> int
                 closure.return %e33: !sigi.stack
             }
-            %e34 = sigi.push %e33, %21: !closure.box<(!sigi.stack) -> !sigi.stack>
+            %e34 = sigi.push %e20, %21: !closure.box<(!sigi.stack) -> !sigi.stack>
             %e35 = func.call @":if:"(%e34) : (!sigi.stack) -> !sigi.stack // bool, (-> int), (-> int) -> int
             closure.return %e35: !sigi.stack
         }
-        %e36 = sigi.push %e35, %11: !closure.box<(!sigi.stack) -> !sigi.stack>
+        %e36 = sigi.push %e11, %11: !closure.box<(!sigi.stack) -> !sigi.stack>
         %e37 = func.call @":if:"(%e36) : (!sigi.stack) -> !sigi.stack // bool, (-> int), (-> int) -> int
         return %e37: !sigi.stack
     }

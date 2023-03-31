@@ -142,9 +142,12 @@ package emitmlir {
       case s: String => s
       case t: KStackTypeItem => mlirType(t)
 
-    private def renderPush(ty: KStackTypeItem | String, inVal: MlirIdent, comment: String = ""): Unit =
+    private def renderPush(ty: KStackTypeItem | String,
+                           inVal: MlirIdent,
+                           inEnv: MlirIdent = envIdGen.cur,
+                           comment: String = ""): Unit =
       val push = new MPushOp(ty = typeToStr(ty),
-                             inEnv = envIdGen.cur,
+                             inEnv = inEnv,
                              outEnv = envIdGen.next(),
                              inVal = inVal)
       renderOp(push, comment)
@@ -284,7 +287,7 @@ package emitmlir {
           println(s"closure.return ${envIdGen.cur}: !sigi.stack")
           indent -= 1
           println(s"}")
-          renderPush(MlirBuilder.ClosureT, cstId)
+          renderPush(MlirBuilder.ClosureT, inVal = cstId, inEnv = envId)
 
           // restore previous bindings
           this.localSymEnv ++= prevBindings
