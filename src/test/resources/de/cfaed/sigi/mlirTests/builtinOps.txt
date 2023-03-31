@@ -1,0 +1,77 @@
+module {
+    // __main__: ->
+    func.func @__main__(%e0: !sigi.stack) -> !sigi.stack {
+        %1 = arith.constant 1: i32
+        %e1 = sigi.push %e0, %1: i32
+        // -> x;
+        %e2, %2_x = sigi.pop %e1: i32 // x
+        %e3 = sigi.push %e2, %2_x: i32 // push x
+        %e4 = sigi.push %e3, %2_x: i32 // push x
+        // +
+        %e5, %3 = sigi.pop %e4: i32
+        %e6, %4 = sigi.pop %e5: i32
+        %5 = arith.addi %3, %4: i32
+        %e7 = sigi.push %e6, %5: i32
+        %e8, %6 = sigi.pop %e7: i32 // pop intrinsic
+        %e9 = sigi.push %e8, %2_x: i32 // push x
+        %e10 = sigi.push %e9, %2_x: i32 // push x
+        // -
+        %e11, %7 = sigi.pop %e10: i32
+        %e12, %8 = sigi.pop %e11: i32
+        %9 = arith.subi %7, %8: i32
+        %e13 = sigi.push %e12, %9: i32
+        %e14, %10 = sigi.pop %e13: i32 // pop intrinsic
+        %e15 = sigi.push %e14, %2_x: i32 // push x
+        %e16 = sigi.push %e15, %2_x: i32 // push x
+        // *
+        %e17, %11 = sigi.pop %e16: i32
+        %e18, %12 = sigi.pop %e17: i32
+        %13 = arith.muli %11, %12: i32
+        %e19 = sigi.push %e18, %13: i32
+        %e20, %14 = sigi.pop %e19: i32 // pop intrinsic
+        %e21 = sigi.push %e20, %2_x: i32 // push x
+        %e22 = sigi.push %e21, %2_x: i32 // push x
+        // /
+        %e23, %15 = sigi.pop %e22: i32
+        %e24, %16 = sigi.pop %e23: i32
+        %17 = arith.divi %15, %16: i32
+        %e25 = sigi.push %e24, %17: i32
+        %e26, %18 = sigi.pop %e25: i32 // pop intrinsic
+        %e27 = sigi.push %e26, %2_x: i32 // push x
+        %e28 = sigi.push %e27, %2_x: i32 // push x
+        // %
+        %e29, %19 = sigi.pop %e28: i32
+        %e30, %20 = sigi.pop %e29: i32
+        %21 = arith.modi %19, %20: i32
+        %e31 = sigi.push %e30, %21: i32
+        %e32, %22 = sigi.pop %e31: i32 // pop intrinsic
+        %e33 = sigi.push %e32, %2_x: i32 // push x
+        // unary_-
+        %23 = arith.constant 0: i32
+        %e34, %24 = sigi.pop %e33: i32
+        %25 = arith.subi %23, %24: i32
+        %e35 = sigi.push %e34, %25: i32
+        %e36, %26 = sigi.pop %e35: i32 // pop intrinsic
+        %e37 = sigi.push %e36, %2_x: i32 // push x
+        %e38, %27 = sigi.pop %e37: i32 // pop intrinsic
+        %e39 = sigi.push %e38, %2_x: i32 // push x
+        // unary_~
+        %28 = arith.constant 1: i32
+        %e40, %29 = sigi.pop %e39: i32
+        %30 = arith.xori %28, %29: i32
+        %e41 = sigi.push %e40, %30: i32
+        %e42, %31 = sigi.pop %e41: i32 // pop intrinsic
+        %32 = arith.constant 1: i1
+        %e43 = sigi.push %e42, %32: i1
+        // -> b;
+        %e44, %33_b = sigi.pop %e43: i1 // b
+        %e45 = sigi.push %e44, %33_b: i1 // push b
+        // unary_!
+        %34 = arith.constant 1: i1
+        %e46, %35 = sigi.pop %e45: i1
+        %36 = arith.xori %34, %35: i1
+        %e47 = sigi.push %e46, %36: i1
+        %e48, %37 = sigi.pop %e47: i1 // pop intrinsic
+        return %e48: !sigi.stack
+    }
+}

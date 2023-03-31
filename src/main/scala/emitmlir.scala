@@ -14,8 +14,9 @@ import scala.collection.mutable
 
 package emitmlir {
 
-  import de.cfaed.sigi.emitmlir.MlirBuilder.{BuiltinIntOps, TargetFunType}
+  import de.cfaed.sigi.emitmlir.MlirBuilder.{BuiltinIntOps, BuiltinUnaryOps, TargetFunType}
 
+  import scala.collection.immutable.List
   import scala.collection.mutable.ListBuffer
   import scala.io.Source
 
@@ -159,6 +160,14 @@ package emitmlir {
                  outEnv = envIdGen.next(),
                  outVal = valIdGen.next(valueNameSuffix))
 
+
+    private def renderPop(ty: KStackTypeItem | String,
+                          valueNameSuffix: String = "",
+                          comment: String = ""): MlirIdent =
+      val pop = makePop(ty, valueNameSuffix)
+      renderOp(pop, comment = comment)
+      pop.outVal
+
     /**
       * Contract: before this fun is invoked, the [[envIdGen]] is the ID of the last environment.
       * When it exits, the [[envIdGen]] is the ID of another env id.
@@ -168,6 +177,21 @@ package emitmlir {
       */
     private def emitExpr(t: TypedExpr): Unit =
       val envId = envIdGen.cur
+
+      def unaryWithConstant(ty: KStackTypeItem, constant: String, arithOp: String, comment: String = ""): Unit =
+        val mlirTy = mlirType(ty)
+        if (comment.nonEmpty)
+          println(s"// $comment")
+
+        val zeroCst = valIdGen.next()
+        println(s"$zeroCst = arith.constant $constant: $mlirTy")
+
+        val pop = renderPop(ty)
+
+        val result = valIdGen.next()
+        println(s"$result = arith.$arithOp $zeroCst, $pop: $mlirTy")
+        renderPush(mlirTy, result)
+
       t match
         case TChain(_, a, b) =>
           emitExpr(a)
@@ -176,9 +200,7 @@ package emitmlir {
         case TPushList(ty, items) =>
           val itemIds = for (item <- items) yield {
             emitExpr(item)
-            val pop = makePop(ty.item)
-            renderOp(pop)
-            pop.outVal
+            renderPop(ty.item)
           }
           val args = itemIds.mkString(", ")
           val listId = valIdGen.next()
@@ -188,64 +210,66 @@ package emitmlir {
           println(s"$listId = sigi.create_list $args: $mlirTy")
           renderPush(ty, listId)
 
-        case TPushPrim(ty, value) if ty == KBool || ty == KInt =>
-          val cstId = valIdGen.next()
-          val cstAttr = makeConstAttr(ty, value)
-          val mlirTy = mlirType(ty)
-
-          println(s"$cstId = arith.constant $cstAttr: $mlirTy")
-          renderPush(ty, cstId)
-
         case TPushPrim(ty, value) =>
+          val op = if ty == KBool || ty == KInt then "arith.constant" else "sigi.constant"
           val cstId = valIdGen.next()
           val cstAttr = makeConstAttr(ty, value)
           val mlirTy = mlirType(ty)
 
-          println(s"$cstId = sigi.constant $cstAttr: $mlirTy")
+          println(s"$cstId = $op $cstAttr: $mlirTy")
           renderPush(ty, cstId)
-
 
         // just pushing one item
         case TFunApply(StackType(Nil, List(ty)), name) =>
           localSymEnv.get(name) match
-            case Some(LocalSymDesc(_, mlirId, _)) => renderPush(ty, mlirId, comment = name)
+            case Some(LocalSymDesc(_, mlirId, _)) => renderPush(ty, mlirId, comment = s"push $name")
             case None =>
               val errId = envIdGen.next()
               println(s"$errId = sigi.error $envId, {msg=\"undefined name '$name'\"}")
 
-        // builtin arithmetic and comparisons
+        // builtin binary arithmetic ops and comparisons
         case TFunApply(StackType(List(a@(KInt | KBool), b), List(c)), name) if a == b && BuiltinIntOps.contains(name) =>
-          val pop0 = makePop(b)
-          val pop1 = makePop(a)
+          println(s"// $name")
+          val pop0 = renderPop(b)
+          val pop1 = renderPop(a)
 
           val result = valIdGen.next()
           val builtinOp = BuiltinIntOps(name)
 
-          renderOp(pop0)
-          renderOp(pop1)
-          println(s"$result = $builtinOp ${pop0.outVal}, ${pop1.outVal}: ${mlirType(a)}")
+          println(s"$result = $builtinOp $pop0, $pop1: ${mlirType(a)}")
           renderPush(c, result)
+
+        case TFunApply(StackType(List(KInt), List(KInt)), name@"unary_-") =>
+          unaryWithConstant(KInt, "0", "subi", name)
+        // unary_+ is a noop
+        case TFunApply(StackType(List(KInt), List(KInt)), "unary_+") =>
+        case TFunApply(StackType(List(KInt), List(KInt)), name@"unary_~") =>
+          // bitwise not
+          unaryWithConstant(KInt, "1", "xori", name)
+        case TFunApply(StackType(List(KBool), List(KBool)), name@"unary_!") =>
+          // bitwise not
+          unaryWithConstant(KBool, "1", "xori", name)
 
         // intrinsics
         case TFunApply(StackType(List(a), _), "dup") =>
-          val pop = makePop(a)
-          renderOp(pop)
-          renderPush(a, pop.outVal)
-          renderPush(a, pop.outVal)
+          println(s"// dup intrinsic")
+          val popVal = renderPop(a)
+          renderPush(a, popVal)
+          renderPush(a, popVal)
 
         case TFunApply(StackType(List(a), _), "pop") =>
-          renderOp(makePop(a))
+          renderPop(a, comment = "pop intrinsic")
 
         case TFunApply(StackType(List(a, b), _), "swap") =>
-          val popb = makePop(b)
-          val popa = makePop(a)
-          renderOp(popb)
-          renderOp(popa)
-          renderPush(b, popb.outVal)
-          renderPush(a, popa.outVal)
+          println(s"// swap intrinsic")
+          val popb = renderPop(b)
+          val popa = renderPop(a)
+          renderPush(b, popb)
+          renderPush(a, popa)
 
         // higher-order function.
         case TFunApply(_, "apply") =>
+          println(s"// apply intrinsic")
           val pop = makePop(MlirBuilder.ClosureT)
           renderOp(pop)
           val nextEnv = envIdGen.next()
@@ -293,11 +317,11 @@ package emitmlir {
           this.localSymEnv ++= prevBindings
 
         case TNameTopN(stackTy, names) =>
+          println(s"// ${t.erase}")
           for ((name, ty) <- names.zip(stackTy.consumes)) {
-            val pop = makePop(ty, valueNameSuffix = s"_$name")
-            val desc = LocalSymDesc(sourceName = name, mlirName = pop.outVal, mlirType = mlirType(ty))
+            val popVal = renderPop(ty, valueNameSuffix = s"_$name", comment = name)
+            val desc = LocalSymDesc(sourceName = name, mlirName = popVal, mlirType = mlirType(ty))
             localSymEnv.put(name, desc)
-            renderOp(pop, comment = name)
           }
 
         case TEvalBarrier(_) => throw UnsupportedOperationException("Eval barrier is only for the REPL")
@@ -382,6 +406,17 @@ package emitmlir {
 
       "=" -> "arith.cmpi \"eq\",",
       "<>" -> "arith.cmpi \"ne\",",
+
+      // boolean
+      // todo can be shadowed
+      "and" -> "arith.andi",
+      "or" -> "arith.ori",
+      "xor" -> "arith.xori",
+      )
+    private val BuiltinUnaryOps = Map(
+      "unary_-" -> "",
+      "unary_~" -> "",
+      "unary_!" -> "",
       )
 
   }

@@ -103,12 +103,13 @@ package builtins {
     genericCmpOp("<>", true),
     unaryOp("unary_-", a => -a),
     unaryOp("unary_+", a => a),
-    unaryOp("unary_~", a => a ^ a),
+    unaryOp("unary_~", a => ~a),
 
     boolOp("and", _ & _),
     boolOp("or", _ | _),
     boolOp("xor", _ ^ _),
     boolUnaryOp("not", !_),
+    boolUnaryOp("unary_!", !_),
 
     // These are core function. Also see list of cat builtins: https://github.com/cdiggins/cat-language
     // TODO compose : ('S ('B -> 'C) ('A -> 'B) -> 'S ('A -> 'C))

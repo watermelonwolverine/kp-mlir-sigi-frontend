@@ -152,7 +152,7 @@ package ast {
        ARROW ~ rep1sep(id, COMMA) <~ SEMI ^^ { case arrow ~ ids => NameTopN(ids.map(_.name)).setPos(arrow.pos) }
 
     private def unary: Parser[KExpr] =
-      (OP("-") | OP("+") | OP("~")).? ~ primary ^^ {
+      (OP("-") | OP("+") | OP("~") | OP("!")).? ~ primary ^^ {
         case Some(op: OP) ~ e => Chain(e, FunApply("unary_" + op.opName).setPos(op.pos))
         case None ~ e => e
       }

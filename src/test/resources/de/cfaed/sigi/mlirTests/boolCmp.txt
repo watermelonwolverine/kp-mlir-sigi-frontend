@@ -5,6 +5,7 @@ module {
         %e1 = sigi.push %e0, %1: i1
         %2 = arith.constant 0: i1
         %e2 = sigi.push %e1, %2: i1
+        // =
         %e3, %3 = sigi.pop %e2: i1
         %e4, %4 = sigi.pop %e3: i1
         %5 = arith.cmpi "eq", %3, %4: i1

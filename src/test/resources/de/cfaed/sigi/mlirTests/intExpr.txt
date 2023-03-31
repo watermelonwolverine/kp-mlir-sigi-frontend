@@ -7,10 +7,12 @@ module {
         %e2 = sigi.push %e1, %2: i32
         %3 = arith.constant 4: i32
         %e3 = sigi.push %e2, %3: i32
+        // *
         %e4, %4 = sigi.pop %e3: i32
         %e5, %5 = sigi.pop %e4: i32
         %6 = arith.muli %4, %5: i32
         %e6 = sigi.push %e5, %6: i32
+        // +
         %e7, %7 = sigi.pop %e6: i32
         %e8, %8 = sigi.pop %e7: i32
         %9 = arith.addi %7, %8: i32

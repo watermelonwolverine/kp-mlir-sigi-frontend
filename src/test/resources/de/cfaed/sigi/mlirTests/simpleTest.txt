@@ -1,9 +1,11 @@
 module {
     // double: int -> int
     func.func @double(%e0: !sigi.stack) -> !sigi.stack {
+        // dup intrinsic
         %e1, %1 = sigi.pop %e0: i32
         %e2 = sigi.push %e1, %1: i32
         %e3 = sigi.push %e2, %1: i32
+        // +
         %e4, %2 = sigi.pop %e3: i32
         %e5, %3 = sigi.pop %e4: i32
         %4 = arith.addi %2, %3: i32
@@ -18,6 +20,7 @@ module {
         %e3 = func.call @double(%e2) : (!sigi.stack) -> !sigi.stack // int -> int
         %2 = arith.constant 8: i32
         %e4 = sigi.push %e3, %2: i32
+        // =
         %e5, %3 = sigi.pop %e4: i32
         %e6, %4 = sigi.pop %e5: i32
         %5 = arith.cmpi "eq", %3, %4: i32
