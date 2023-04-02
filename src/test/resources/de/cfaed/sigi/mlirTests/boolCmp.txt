@@ -1,15 +1,15 @@
 module {
     // __main__: -> bool
-    func.func @__main__(%e0: !sigi.stack) -> !sigi.stack {
-        %1 = arith.constant 1: i1
-        %e1 = sigi.push %e0, %1: i1
-        %2 = arith.constant 0: i1
-        %e2 = sigi.push %e1, %2: i1
+    func.func @__main__(%s0: !sigi.stack) -> !sigi.stack {
+        %v1 = arith.constant 1: i1
+        %s1 = sigi.push %s0, %v1: i1
+        %v2 = arith.constant 0: i1
+        %s2 = sigi.push %s1, %v2: i1
         // =
-        %e3, %3 = sigi.pop %e2: i1
-        %e4, %4 = sigi.pop %e3: i1
-        %5 = arith.cmpi "eq", %3, %4: i1
-        %e5 = sigi.push %e4, %5: i1
-        return %e5: !sigi.stack
+        %s3, %v3 = sigi.pop %s2: i1
+        %s4, %v4 = sigi.pop %s3: i1
+        %v5 = arith.cmpi "eq", %v3, %v4: i1
+        %s5 = sigi.push %s4, %v5: i1
+        return %s5: !sigi.stack
     }
 }

@@ -1,31 +1,31 @@
 module {
     // double: int -> int
-    func.func @double(%e0: !sigi.stack) -> !sigi.stack {
+    func.func @double(%s0: !sigi.stack) -> !sigi.stack {
         // dup intrinsic
-        %e1, %1 = sigi.pop %e0: i32
-        %e2 = sigi.push %e1, %1: i32
-        %e3 = sigi.push %e2, %1: i32
+        %s1, %v1 = sigi.pop %s0: i32
+        %s2 = sigi.push %s1, %v1: i32
+        %s3 = sigi.push %s2, %v1: i32
         // +
-        %e4, %2 = sigi.pop %e3: i32
-        %e5, %3 = sigi.pop %e4: i32
-        %4 = arith.addi %2, %3: i32
-        %e6 = sigi.push %e5, %4: i32
-        return %e6: !sigi.stack
+        %s4, %v2 = sigi.pop %s3: i32
+        %s5, %v3 = sigi.pop %s4: i32
+        %v4 = arith.addi %v2, %v3: i32
+        %s6 = sigi.push %s5, %v4: i32
+        return %s6: !sigi.stack
     }
     // __main__: ->
-    func.func @__main__(%e0: !sigi.stack) -> !sigi.stack {
-        %1 = arith.constant 2: i32
-        %e1 = sigi.push %e0, %1: i32
-        %e2 = func.call @double(%e1) : (!sigi.stack) -> !sigi.stack // int -> int
-        %e3 = func.call @double(%e2) : (!sigi.stack) -> !sigi.stack // int -> int
-        %2 = arith.constant 8: i32
-        %e4 = sigi.push %e3, %2: i32
+    func.func @__main__(%s0: !sigi.stack) -> !sigi.stack {
+        %v1 = arith.constant 2: i32
+        %s1 = sigi.push %s0, %v1: i32
+        %s2 = func.call @double(%s1) : (!sigi.stack) -> !sigi.stack // int -> int
+        %s3 = func.call @double(%s2) : (!sigi.stack) -> !sigi.stack // int -> int
+        %v2 = arith.constant 8: i32
+        %s4 = sigi.push %s3, %v2: i32
         // =
-        %e5, %3 = sigi.pop %e4: i32
-        %e6, %4 = sigi.pop %e5: i32
-        %5 = arith.cmpi "eq", %3, %4: i32
-        %e7 = sigi.push %e6, %5: i1
-        %e8 = func.call @show(%e7) : (!sigi.stack) -> !sigi.stack // bool ->
-        return %e8: !sigi.stack
+        %s5, %v3 = sigi.pop %s4: i32
+        %s6, %v4 = sigi.pop %s5: i32
+        %v5 = arith.cmpi "eq", %v3, %v4: i32
+        %s7 = sigi.push %s6, %v5: i1
+        %s8 = func.call @show(%s7) : (!sigi.stack) -> !sigi.stack // bool ->
+        return %s8: !sigi.stack
     }
 }

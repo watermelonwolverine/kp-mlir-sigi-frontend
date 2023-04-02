@@ -76,9 +76,9 @@ package emitmlir {
                     startEnv: Int = 0,
                     startVal: Int = 0) {
     /** Ident of the environment. */
-    private val envIdGen = IdGenerator(startEnv, new MlirIdent("e")(_))
+    private val envIdGen = IdGenerator(startEnv, new MlirIdent("s")(_))
     /** Ident for regular values. */
-    private val valIdGen = IdGenerator(startVal, new MlirIdent("")(_))
+    private val valIdGen = IdGenerator(startVal, new MlirIdent("v")(_))
 
     private case class LocalSymDesc(sourceName: String, mlirName: MlirIdent, mlirType: String)
 
