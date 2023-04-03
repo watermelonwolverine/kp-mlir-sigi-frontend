@@ -233,7 +233,13 @@ package builtins {
         case a :: tl => Right(VFun(Some("quote"), StackType.generic1(StackType.pushOne), env => Right(env.push(a))) :: tl)
       },
 
-      stdLibFun("""define show ('a ->): pp pop;;""")(pp._2, pop._2),
+      stackFun("show", StackType.generic1(a => StackType(consumes = List(a))),
+               // this is a forward declaration, the dialect should do something with it.
+               compilationStrategy = MlirDefinition(name => s"func.func @\"$name\"(!sigi.stack) -> !sigi.stack;")) {
+        case stack@(hd :: _) =>
+          println(s"$hd")
+          Right(stack)
+      },
 
       // print and pass: print the top of the stack but leave it there
       // this function is equivalent to `dup show`

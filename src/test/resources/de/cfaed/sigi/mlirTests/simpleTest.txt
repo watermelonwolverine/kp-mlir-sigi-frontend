@@ -1,4 +1,5 @@
 module {
+    func.func @"show"(!sigi.stack) -> !sigi.stack;
 
     // double: int -> int
     func.func @double(%s0: !sigi.stack) -> !sigi.stack {

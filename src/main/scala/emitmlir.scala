@@ -448,7 +448,7 @@ package emitmlir {
     out.println("module {")
     val builder = new MlirBuilder(out, indent = 1)
 
-    for ((name, fun) <- module.stdFunctions) {
+    for ((name, fun) <- module.stdFunctions.toBuffer.sortBy(_._1)) {
       fun.compilationStrategy match
         case StdLibDefinition(fun) => // todo need monomorphization // builder.emitFunction(fun)
         case MlirDefinition(definition) => builder.println(definition(name).stripIndent())
