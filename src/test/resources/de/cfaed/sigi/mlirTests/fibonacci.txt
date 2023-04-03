@@ -1,18 +1,17 @@
 module {
-    
+
     func.func @"cond"(%s0: !sigi.stack) -> !sigi.stack {
         %s1, %elseThunk = sigi.pop %s0: !closure.box<(!sigi.stack) -> !sigi.stack>
         %s2, %thenThunk = sigi.pop %s1: !closure.box<(!sigi.stack) -> !sigi.stack>
         %s3, %condition = sigi.pop %s2: i1
         %thunk = scf.if %condition -> !closure.box<(!sigi.stack) -> !sigi.stack> {
-            scf.yield %thenThunk
+            scf.yield %thenThunk: !closure.box<(!sigi.stack) -> !sigi.stack>
         } else {
-            scf.yield %elseThunk
+            scf.yield %elseThunk: !closure.box<(!sigi.stack) -> !sigi.stack>
         }
-        %res = closure.call %thunk(%s3) : (!sigi.stack) -> !sigi.stack
-        return %res
+        %res = closure.call %thunk(%s3) : !closure.box<(!sigi.stack) -> !sigi.stack>
+        return %res: !sigi.stack
     }
-
 
     // fib_naive: int -> int
     func.func @fib_naive(%s0: !sigi.stack) -> !sigi.stack {
@@ -65,7 +64,6 @@ module {
         %s29 = closure.call %v21 (%s28) : !closure.box<(!sigi.stack) -> !sigi.stack>
         return %s29: !sigi.stack
     }
-
     // fib_tailrec: int -> int
     func.func @fib_tailrec(%s0: !sigi.stack) -> !sigi.stack {
         %v1 = arith.constant 1: i32
@@ -75,7 +73,6 @@ module {
         %s3 = func.call @fib_tailrec_helper(%s2) : (!sigi.stack) -> !sigi.stack // int, int, int -> int
         return %s3: !sigi.stack
     }
-
     // fib_tailrec_helper: int, int, int -> int
     func.func @fib_tailrec_helper(%s0: !sigi.stack) -> !sigi.stack {
         // -> n, a, b;
@@ -143,7 +140,6 @@ module {
         %s41 = closure.call %v30 (%s40) : !closure.box<(!sigi.stack) -> !sigi.stack>
         return %s41: !sigi.stack
     }
-
     // __main__: ->
     func.func @__main__(%s0: !sigi.stack) -> !sigi.stack {
         %v1 = arith.constant 20: i32

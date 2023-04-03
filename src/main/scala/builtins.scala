@@ -153,14 +153,14 @@ package builtins {
                                                          |        %s2, %thenThunk = sigi.pop %s1: !closure.box<(!sigi.stack) -> !sigi.stack>
                                                          |        %s3, %condition = sigi.pop %s2: i1
                                                          |        %thunk = scf.if %condition -> !closure.box<(!sigi.stack) -> !sigi.stack> {
-                                                         |            scf.yield %thenThunk
+                                                         |            scf.yield %thenThunk: !closure.box<(!sigi.stack) -> !sigi.stack>
                                                          |        } else {
-                                                         |            scf.yield %elseThunk
+                                                         |            scf.yield %elseThunk: !closure.box<(!sigi.stack) -> !sigi.stack>
                                                          |        }
-                                                         |        %res = closure.call %thunk(%s3) : (!sigi.stack) -> !sigi.stack
-                                                         |        return %res
+                                                         |        %res = closure.call %thunk(%s3) : !closure.box<(!sigi.stack) -> !sigi.stack>
+                                                         |        return %res: !sigi.stack
                                                          |    }
-                                                         |""".stripMargin
+                                                         |    """.stripMargin.stripIndent()
                                                     )) {
         case elseV :: thenV :: VPrimitive(KBool, condition) :: tl =>
           Right((if condition then thenV else elseV) :: tl)

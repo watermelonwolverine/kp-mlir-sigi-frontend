@@ -112,9 +112,7 @@ package emitmlir {
       case KString => s"\"$value\""
 
     def println(str: String): Unit = {
-      if (str.nonEmpty)
-        (0 until indent).foreach { _ => out.print("    ") }
-      out.println(str)
+      out.print(str.indent(indent * 4))
     }
 
     def emitFunction(funDef: TFunDef): Unit = {
@@ -451,7 +449,7 @@ package emitmlir {
     for ((name, fun) <- module.stdFunctions) {
       fun.compilationStrategy match
         case StdLibDefinition(fun) => // todo need monomorphization // builder.emitFunction(fun)
-        case MlirDefinition(definition) => builder.println(definition(name))
+        case MlirDefinition(definition) => builder.println(definition(name).stripIndent())
         case FrontendIntrinsic => // do nothing, will be handled here
     }
 

@@ -17,15 +17,17 @@ class MlirCompilSpec extends AnyFunSuite {
   inline def doTest(fileName: String): Unit = {
     test(s"$fileName.sigi") {
 
+      def normText(s:String) = s.trim.linesIterator.filter(!_.isBlank).mkString("\n")
+
       val source = classOf[MlirCompilSpec].getResourceAsStream(s"mlirTests/$fileName.sigi")
       val expected = classOf[MlirCompilSpec].getResourceAsStream(s"mlirTests/$fileName.txt")
-      val expectedStr = io.Source.fromInputStream(expected).mkString.trim
+      val expectedStr = io.Source.fromInputStream(expected).mkString
 
       val out = ByteArrayOutputStream()
 
       emitmlir.parseSigiAndEmitMlir(PrintStream(out))(io.Source.fromInputStream(source))
 
-      assertResult(expectedStr)(out.toString().trim)
+      assertResult(normText(expectedStr))(normText(out.toString))
     }
   }
 
