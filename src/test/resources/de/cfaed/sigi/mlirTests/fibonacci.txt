@@ -11,8 +11,8 @@ module {
         %res = closure.call %thunk(%s3) : !closure.box<(!sigi.stack) -> !sigi.stack>
         return %res: !sigi.stack
     }
-    
-    func.func @"show"(!sigi.stack) -> !sigi.stack;
+
+    func.func private @"show"(!sigi.stack) -> !sigi.stack
 
     // fib_naive: int -> int
     func.func @fib_naive(%s0: !sigi.stack) -> !sigi.stack {
@@ -142,7 +142,7 @@ module {
         return %s41: !sigi.stack
     }
     // __main__: ->
-    func.func @__main__(%s0: !sigi.stack) -> !sigi.stack {
+    func.func @__main__(%s0: !sigi.stack) -> !sigi.stack attributes {sigi.main} {
         %v1 = arith.constant 20: i32
         %s1 = sigi.push %s0, %v1: i32
         %s2 = func.call @fib_tailrec(%s1) : (!sigi.stack) -> !sigi.stack // int -> int

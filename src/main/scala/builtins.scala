@@ -236,7 +236,7 @@ package builtins {
 
       stackFun("show", StackType.generic1(a => StackType(consumes = List(a))),
                // this is a forward declaration, the dialect should do something with it.
-               compilationStrategy = MlirDefinition(name => s"func.func @\"$name\"(!sigi.stack) -> !sigi.stack;")) {
+               compilationStrategy = MlirDefinition(name => s"func.func private @\"$name\"(!sigi.stack) -> !sigi.stack")) {
         case stack@(hd :: _) =>
           println(s"$hd")
           Right(stack)

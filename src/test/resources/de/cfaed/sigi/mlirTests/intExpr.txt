@@ -1,7 +1,7 @@
 module {
 
     // __main__: -> int
-    func.func @__main__(%s0: !sigi.stack) -> !sigi.stack {
+    func.func @__main__(%s0: !sigi.stack) -> !sigi.stack attributes {sigi.main} {
         %v1 = arith.constant 1: i32
         %s1 = sigi.push %s0, %v1: i32
         %v2 = arith.constant 2: i32

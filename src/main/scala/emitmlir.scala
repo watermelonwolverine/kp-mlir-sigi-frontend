@@ -115,13 +115,14 @@ package emitmlir {
       out.print(str.indent(indent * 4))
     }
 
-    def emitFunction(funDef: TFunDef): Unit = {
+    def emitFunction(funDef: TFunDef, isMain: Boolean = false): Unit = {
       resetLocals()
       val TFunDef(name, ty, body) = funDef
 
       println("")
       println(s"// $name: $ty")
-      println(s"func.func @$name(${envIdGen.cur}: !sigi.stack) -> !sigi.stack {")
+      val attrs = if isMain then " attributes {sigi.main}" else ""
+      println(s"func.func @$name(${envIdGen.cur}: !sigi.stack) -> !sigi.stack$attrs {")
       indent += 1
       val uniqued = makeNamesUnique(body)
       this.emitExpr(uniqued)
@@ -460,7 +461,7 @@ package emitmlir {
     }
 
     val mainFun = TFunDef("__main__", module.mainExpr.stackTy, module.mainExpr)
-    builder.emitFunction(mainFun)
+    builder.emitFunction(mainFun, isMain = true)
 
     // todo missing glue code
 
