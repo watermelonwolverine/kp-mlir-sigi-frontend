@@ -224,6 +224,7 @@ package builtins {
       pop,
       dup,
       cond,
+      pp,
       // swap top elements
       stackFun("swap", StackType.generic2((ta, tb) => StackType(consumes = List(ta, tb), produces = List(tb, ta)))) {
         case a :: b :: tl => Right(b :: a :: tl)
@@ -239,16 +240,7 @@ package builtins {
         case stack@(hd :: _) =>
           println(s"$hd")
           Right(stack)
-      },
-
-      // print and pass: print the top of the stack but leave it there
-      // this function is equivalent to `dup show`
-      stackFun("pp", StackType.generic1(StackType.symmetric1)) {
-        case stack@(hd :: _) =>
-          println(s"$hd")
-          Right(stack)
-      },
-      )
+      })
   }
 
   val PredefinedSymbols: Map[String, KValue] = BuiltinSpecs.map(s => s._1 -> s._2.asValue).toMap
