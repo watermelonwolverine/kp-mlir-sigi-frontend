@@ -108,31 +108,42 @@ package ast {
 
     private def inParens[P](p: Parser[P]): Parser[P] = LPAREN ~> p <~ RPAREN
 
-    private def funDef: Parser[KFunDef] =
+    // A special fun def that accepts a string literal as the ID.
+    // Used for builtin funs.
+    def builtinFunDef: Parser[KFunDef] = funDef0(id | accept("string", { case s: STRING => s }))
+
+    private def funDef0(idParser: Parser[STRING | ID]): Parser[KFunDef] =
     // note that the normal sigi grammar does not use a semi
-      DEFINE ~> id ~ inParens(funTy) ~ COLON ~ expr <~ PHAT_SEMI ^^ {
-        case id ~ ty ~ _ ~ body => KFunDef(id.name, ty, body).setPos(id.pos)
+      DEFINE ~> idParser ~ inParens(funTy) ~ COLON ~ expr <~ PHAT_SEMI ^^ {
+        case (id: ID) ~ ty ~ _ ~ body => KFunDef(id.name, ty, body).setPos(id.pos)
+        case (id: STRING) ~ ty ~ _ ~ body => KFunDef(id.value, ty, body).setPos(id.pos)
       }
+
+    def funDef: Parser[KFunDef] = funDef0(id)
 
     private def parexpr = LPAREN ~> expr <~ RPAREN
 
     private def opAsFunApply = accept("operator", { case op: OP => FunApply(op.opName).setPos(op.pos) })
+
     private def id: Parser[ID] = accept("identifier", { case id: ID => id })
+
     private def identAsFunApply = id ^^ { id => FunApply(id.name).setPos(id.pos) }
 
     private def ifelse: Parser[KExpr] =
-      (IF ~> parexpr.? ~ (expr ^^ Quote.apply)
-        ~ rep(ELIF ~> parexpr ~ (expr ^^ Quote.apply))
+      (IF() ~ parexpr.? ~ (expr ^^ Quote.apply)
+        ~ rep(ELIF() ~ parexpr ~ (expr ^^ Quote.apply))
         ~ (ELSE ~> expr ^^ Quote.apply)
         ) ^^ {
-        case (cond: Option[KExpr]) ~ (thenThunk: Quote) ~ (elifs: List[KExpr ~ Quote]) ~ (elseThunk: Quote) =>
-          def makeIf(thenThunk: Quote, elseThunk: Quote): KExpr =
-            Chain(Chain(thenThunk, elseThunk), FunApply(builtins.Intrinsic_if))
+        case (ifTok: IF) ~ (cond: Option[KExpr]) ~ (thenThunk: Quote) ~ (elifs: List[ELIF ~ KExpr ~ Quote]) ~ (elseThunk: Quote) =>
+          def makeIf(thenThunk: Quote, elseThunk: Quote, position: Position): KExpr = {
+            val ifFunction = Chain(FunApply("cond").setPos(position), FunApply("apply").setPos(position))
+            Chain(Chain(thenThunk, elseThunk), ifFunction)
+          }
 
           val foldedElseIf = elifs.foldRight[Quote](elseThunk) {
-            case (c ~ t, f) => Quote(Chain(c, makeIf(t, f)))
+            case (elif ~ c ~ t, f) => Quote(Chain(c, makeIf(t, f, elif.pos)))
           }
-          val ifelse = makeIf(thenThunk, foldedElseIf)
+          val ifelse = makeIf(thenThunk, foldedElseIf, ifTok.pos)
 
           cond.map(c => Chain(c, ifelse)).getOrElse(ifelse)
       }

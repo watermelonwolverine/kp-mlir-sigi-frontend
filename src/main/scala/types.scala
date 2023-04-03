@@ -44,6 +44,20 @@ package types {
         case TEvalBarrier(te) => OpaqueExpr(te)
       res.setPos(this.pos)
 
+    def reduce[A](a: A)(f: PartialFunction[(TypedExpr, A), A]): A =
+      val acc = f.applyOrElse((this, a), _._2)
+      this match
+        case TChain(_, a, b) =>
+          val acc1 = a.reduce(acc)(f)
+          b.reduce(acc1)(f)
+        case TPushList(_, items) =>
+          items.foldLeft(acc) { (acc, item) =>
+            item.reduce(acc)(f)
+          }
+        case TPushQuote(term) => term.reduce(acc)(f)
+        case _ => acc
+
+
     override def toString: String = this match
       case TChain(stackTy, a, b) => s"(($a $b) : $stackTy)"
       case TPushList(ty, items) => items.mkString("[", ", ", s"] : $ty")
@@ -150,12 +164,18 @@ package types {
     }
   }
   class KRowIVar(val origin: KRowVar) extends KStackTypeItem {
-    var instantiation: List[KStackTypeItem] = _
+    private var _instantiation: List[KStackTypeItem] = _
     val aliases: mutable.Set[KRowIVar] = mutable.Set()
     private[types] val id = {
       val id = KRowIVar.seqNum
       KRowIVar.seqNum += 1
       id
+    }
+
+    def instantiation: List[KStackTypeItem] = this._instantiation
+
+    def instantiation_=(inst: List[KStackTypeItem]): Unit = {
+      this._instantiation = inst
     }
   }
   object KRowIVar {
@@ -230,9 +250,13 @@ package types {
     def canonicalize(st: StackType): StackType =
       val tvars: mutable.Map[KTypeVar, KTypeVar] = mutable.Map()
       val tvarMaker = KTypeVar.typeVarGenerator()
-      TySubst {
-        case tv: KTypeVar => tvars.getOrElseUpdate(tv, tvarMaker())
-        case _: KInferenceVar => throw IllegalStateException("ivars should not be present in grounded terms")
+
+      new TySubst() {
+        override def substIVar(tvar: KInferenceVar): KDataType =
+          throw IllegalStateException("ivars should not be present in grounded terms")
+
+        override protected def substTVar(tvar: KTypeVar): KDataType =
+          tvars.getOrElseUpdate(tvar, tvarMaker())
       }.substStackType(st)
   }
 
@@ -240,30 +264,33 @@ package types {
     tvarSubst: PartialFunction[KTypeVar | KInferenceVar, KDataType],
     rvarSubst: PartialFunction[KRowVar | KRowIVar, KStackTypeItem] = { t => t }
   ): TySubst =
-    def makeTotal[A <: B, B](pf: PartialFunction[A, B]): A => B =
-      a => pf.applyOrElse(a, a1 => a1)
+    new TySubst() {
+      override protected def substTVar(tvar: KTypeVar): KDataType = tvarSubst.applyOrElse(tvar, a => a)
 
-    val totalTvSubst = makeTotal(tvarSubst)
-    val totalRvSubst = makeTotal(rvarSubst)
+      override protected def substIVar(tvar: KInferenceVar): KDataType = tvarSubst.applyOrElse(tvar, a => a)
 
-    new TySubst(totalTvSubst) {
       override protected def applyEltWiseSubst(t: KStackTypeItem): KStackTypeItem = t match
         case dty: KDataType => super.applyEltWiseSubst(dty)
-        case rowVar: KRowVar => totalRvSubst(rowVar)
-        case iVar: KRowIVar => totalRvSubst(iVar)
+        case rowVar: KRowVar => rvarSubst.applyOrElse(rowVar, a => a)
+        case iVar: KRowIVar => rvarSubst.applyOrElse(iVar, a => a)
     }
 
   /** Helper class to perform substitution on terms and types. */
-  class TySubst(protected val f: (KTypeVar | KInferenceVar) => KDataType) {
+  class TySubst {
 
 
     // generalize the parameter fun to apply to all types
     def substDataTy(t: KDataType): KDataType = t match
-      case t: KTypeVar => f(t)
-      case t: KInferenceVar => f(t)
+      case t: KTypeVar => substTVar(t)
+      case t: KInferenceVar => substIVar(t)
       case KFun(st) => KFun(substStackType(st))
       case KList(item) => KList(substDataTy(item))
       case t => t
+
+
+    protected def substTVar(tvar: KTypeVar): KDataType = tvar
+
+    protected def substIVar(tvar: KInferenceVar): KDataType = tvar
 
     def substStackType(stackType: StackType): StackType = stackType.map(applyEltWiseSubst)
 
@@ -284,7 +311,6 @@ package types {
         case TNameTopN(stackTy, names) => TNameTopN(substStackType(stackTy), names)
         case TEvalBarrier(term) => TEvalBarrier(substTerm(term))
       res.setPos(te.pos)
-
   }
 
   def binOpType(t: KDataType) = StackType(consumes = List(t, t), produces = List(t))
@@ -305,55 +331,53 @@ package types {
 
     /** A ground substitution substitutes inference variables with their instantiation. */
 
-    private class Ground {
-      private[this] val tvGen = KTypeVar.typeVarGenerator()
-      private[this] val rvGen = KRowVar.rowVarGenerator()
+    def groundSubst(eliminateIvars: Boolean): TySubst =
+      new TySubst {
+        private[this] val tvGen = KTypeVar.typeVarGenerator()
+        private[this] val rvGen = KRowVar.rowVarGenerator()
 
-      private val groundImpl: TySubst = makeTySubst(
-      {
-        case t: KInferenceVar =>
-          if t.instantiation != null
-          then t.instantiation = groundImpl.substDataTy(t.instantiation)
-          else t.instantiation = tvGen()
-          t.instantiation
+        override protected def substIVar(ivar: KInferenceVar): KDataType =
+          if ivar.instantiation != null
+          then
+            ivar.instantiation = substDataTy(ivar.instantiation)
+            ivar.instantiation
+          else if eliminateIvars then
+            ivar.instantiation = tvGen()
+            ivar.instantiation
+          else
+            ivar
+
+        def groundList(lst: List[KStackTypeItem]): List[KStackTypeItem] =
+          lst.flatMap {
+            case rivar: KRowIVar =>
+              rivar.instantiation =
+                if rivar.instantiation != null
+                then groundList(rivar.instantiation)
+                else
+                  val aliasedInst = rivar.aliases.find(_.instantiation != null).map(_.instantiation)
+                  aliasedInst.getOrElse(List(rvGen()))
+              rivar.instantiation
+            case t => List(applyEltWiseSubst(t))
+          }
+
+        override def substStackType(stackType: StackType): StackType =
+          StackType(
+            consumes = groundList(stackType.consumes),
+            produces = groundList(stackType.produces)
+            ).simplify // notice this simplify
+
       }
-      )
-
-      def groundSubst(groundDt: KDataType => KDataType = groundImpl.substDataTy): TySubst =
-        new TySubst(groundDt) {
-          def groundList(lst: List[KStackTypeItem]): List[KStackTypeItem] =
-            lst.flatMap {
-              case rivar: KRowIVar =>
-                rivar.instantiation =
-                  if rivar.instantiation != null
-                  then groundList(rivar.instantiation)
-                  else
-                    val aliasedInst = rivar.aliases.find(_.instantiation != null).map(_.instantiation)
-                    aliasedInst.getOrElse(List(rvGen()))
-                rivar.instantiation
-              case t => List(applyEltWiseSubst(t))
-            }
-
-          override def substStackType(stackType: StackType): StackType =
-            StackType(
-              consumes = groundList(stackType.consumes),
-              produces = groundList(stackType.produces)
-              ).simplify // notice this simplify
-
-        }
-    }
 
 
     /** Replace inference variables with their instantiation.
       * Uninstantiated variables are replaced by fresh type vars.
       */
-    def ground(te: TypedExpr): TypedExpr = new Ground().groundSubst().substTerm(te)
-    def groundRowVars: TySubst = new Ground().groundSubst(t => t)
-    // only replace
-    def partialGround: TySubst = new Ground().groundSubst {
-      case ivar: KInferenceVar if ivar.instantiation != null => ivar.instantiation
-      case t => t
-    }
+    def ground(te: TypedExpr): TypedExpr = groundSubst(eliminateIvars = true).substTerm(te)
+
+    //    def groundRowVars: TySubst = new Ground().groundSubst(t => t)
+
+    // only replace vars that have an instantiation
+    def partialGround: TySubst = groundSubst(eliminateIvars = false)
 
     def unify(a: StackType, b: StackType): Option[SigiTypeError] =
       val ac = mapToIvars(a.canonicalize)
@@ -524,7 +548,7 @@ package types {
     case tv: ARowVar => Right(KRowVar(tv.name)) // here we create a new type var always. We will coalesce type vars later.
     case ft: AFunType => resolveFunType(env)(ft)
 
-  def resolveFunType(env: TypingScope)(t: AFunType): Either[SigiTypeError, KFun] =
+  def resolveFunType(env: TypingScope)(t: AFunType): Either[SigiTypeError, KFun] = {
     val AFunType(consumes, produces) = t
     for {
       cs <- consumes.map(resolveType(env)).flattenList
@@ -534,16 +558,18 @@ package types {
       val canon = mergeIdenticalTvars(st)
       KFun(canon)
     }
+  }
 
-  private def mergeIdenticalTvars(st: StackType): StackType =
+  private def mergeIdenticalTvars(st: StackType): StackType = {
     val tvGen = KTypeVar.typeVarGenerator()
     val rvGen = KRowVar.rowVarGenerator()
     val identicalTVars = mutable.Map[String, KTypeVar]()
     val identicalRVars = mutable.Map[String, KRowVar]()
     makeTySubst(
     { case tvar: KTypeVar => identicalTVars.getOrElseUpdate(tvar.name, tvGen()) },
-    { case rvar: KRowVar => identicalRVars.getOrElseUpdate(rvar.name, rvGen()) },
-    ).substStackType(st).simplify
+    { case rvar: KRowVar => identicalRVars.getOrElseUpdate(rvar.name, rvGen()) })
+      .substStackType(st).simplify
+  }
 
   def doValidation(env: TypingScope)(ast: KStatement): Either[SigiTypeError, TypedStmt] = {
     ast match
@@ -617,22 +643,20 @@ package types {
 
           scope.ctx.unify(ta.produces, tb.consumes).map(_.setPos(node.pos))
             .toLeft({
-              val ground = scope.ctx.groundRowVars
+              val ground = scope.ctx.partialGround
               val ta2 = ground.substStackType(ta)
               val tb2 = ground.substStackType(tb)
+              // println(s"$ta2 then $tb2")
 
               val commonLen = math.min(ta2.produces.length, tb2.consumes.length)
               val (prod, _) = ta2.produces.splitAtRight(commonLen)
               val (cons, _) = tb2.consumes.splitAtRight(commonLen)
 
-              StackType(consumes = cons ++ ta2.consumes,
-                        produces = prod ++ tb2.produces)
+              val stackTy = StackType(consumes = cons ++ ta2.consumes,
+                                      produces = prod ++ tb2.produces)
+              // println(s": $stackTy")
+              TChain(stackTy, ground.substTerm(leftI), ground.substTerm(rightI)).setPos(node.pos)
             })
-            .map { it =>
-              // Here the ground gives a more specific type to the tree branches.
-              val ground = scope.ctx.partialGround
-              TChain(it, ground.substTerm(leftI), ground.substTerm(rightI)).setPos(node.pos)
-            }
             .map(term => (term, rightScope))
         }
       } yield newEnv

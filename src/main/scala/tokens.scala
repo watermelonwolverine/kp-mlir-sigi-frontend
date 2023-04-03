@@ -24,9 +24,9 @@ package tokens {
   case class STRING(value: String) extends KToken
 
   case object ARROW extends KToken
-  case object IF extends KToken
+  case class IF() extends KToken
   case object ELSE extends KToken
-  case object ELIF extends KToken
+  case class ELIF() extends KToken
   case object TRUE extends KToken
   case object FALSE extends KToken
   case object DEFINE extends KToken
@@ -86,9 +86,9 @@ package tokens {
     | "\\" ^^^ BACKSLASH
 
     private def keyword =
-      "if" ^^^ IF
+      "if" ^^^ IF()
         | "else" ^^^ ELSE
-        | "elif" ^^^ ELIF
+        | "elif" ^^^ ELIF()
         | "true" ^^^ TRUE
         | "false" ^^^ FALSE
         | "define" ^^^ DEFINE

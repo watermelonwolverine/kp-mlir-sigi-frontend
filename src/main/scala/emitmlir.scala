@@ -14,6 +14,7 @@ import scala.collection.mutable
 
 package emitmlir {
 
+  import de.cfaed.sigi.builtins.{BuiltinFunSpec, FrontendIntrinsic, MlirDefinition, StdLibDefinition}
   import de.cfaed.sigi.emitmlir.MlirBuilder.{BuiltinIntOps, BuiltinUnaryOps, TargetFunType}
 
   import scala.collection.immutable.List
@@ -284,7 +285,6 @@ package emitmlir {
           val resultEnv = envIdGen.next()
           println(s"$resultEnv = func.call @$escapedName($envId) : $TargetFunType // $ty")
 
-
         case TPushQuote(term) =>
 
           val freeVars = collectFreeVars(term)
@@ -436,10 +436,24 @@ package emitmlir {
 
   */
 
-  def emitModule(out: PrintStream)(module: TModule): Unit = {
+  private case class EmittableModule(
+    stdFunctions: Map[String, BuiltinFunSpec],
+    userFunctions: Map[String, TFunDef],
+    mainExpr: TypedExpr
+  )
+
+  private def emitModule(out: PrintStream)(module: EmittableModule): Unit = {
     out.println("module {")
     val builder = new MlirBuilder(out, indent = 1)
-    for ((_, fun) <- module.functions) {
+
+    for ((name, fun) <- module.stdFunctions) {
+      fun.compilationStrategy match
+        case StdLibDefinition(fun) => // todo need monomorphization // builder.emitFunction(fun)
+        case MlirDefinition(definition) => builder.println(definition(name))
+        case FrontendIntrinsic => // do nothing, will be handled here
+    }
+
+    for ((_, fun) <- module.userFunctions) {
       builder.emitFunction(fun)
     }
 
@@ -451,13 +465,33 @@ package emitmlir {
     out.println("}")
   }
 
+  private def getUsedStdLibFuns(module: TModule): Set[BuiltinFunSpec] = {
+    (module.functions.map(_._2.body) ++ List(module.mainExpr))
+      .foldLeft(Set[BuiltinFunSpec]()) { (acc, te) =>
+        te.reduce(acc) {
+          case (TFunApply(_, name), set) =>
+            builtins.BuiltinSpecs.get(name).map(set + _).getOrElse(set)
+        }
+      }
+  }
+
   def parseSigiAndEmitMlir(out: PrintStream)(in: Source): Unit = {
 
     val env = Env.Default.toTypingScope
     val res = for {
       parsed <- SigiParser.parseFile(in.mkString)
-      typed <- types.typeFile(env)(parsed)
-    } yield emitModule(out)(typed)
+      module <- types.typeFile(env)(parsed)
+    } yield {
+      val usedStdLibFuns: Map[String, BuiltinFunSpec] = getUsedStdLibFuns(module).map(f => f.surfaceName -> f).toMap
+      // todo monomorphize here
+      //  recurse through the main expr.
+      //  If any called fun is generic, ground it based on the types at the call site.
+      //  Collect non-generic and monomorphized funs for emission.
+      //  You can't emit a generic fun or a generic quote.
+
+      // todo stack overflow when typing generic quotes:  1 2 true if { -> x, y; x } else {-> x, y ; y} apply
+      emitModule(out)(EmittableModule(usedStdLibFuns, module.functions, module.mainExpr))
+    }
 
     res match
       case Left(err) => println(err)

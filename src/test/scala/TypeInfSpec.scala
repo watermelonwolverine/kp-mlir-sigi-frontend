@@ -23,6 +23,8 @@ class TypeInfSpec extends AnyFunSuite {
     }
   }
 
+  checkType("if (true) 1 else 2", "-> int")
+
   checkType("1 2 \\swap", "-> int, int, ('a, 'b -> 'b, 'a)")
   checkType("1 2 \\swap apply", "-> int, int")
   checkType("\\swap apply", "'a, 'b -> 'b, 'a")
@@ -36,7 +38,7 @@ class TypeInfSpec extends AnyFunSuite {
   checkType("-> x, y; x y", "'a, 'b -> 'a, 'b")
   checkType("-> x;", "'a ->")
   checkType("-> x, y; y", "'a, 'b -> 'b")
-  checkType("if (true) 1 else 2", "-> int")
+ // checkType("if (true) 1 else 2", "-> int")
   checkType("if 1 else 2", "bool -> int")
   checkType("true if 1 else 2", "-> int")
   checkType("{->a,b;b} -> snd; 1 2 snd", "-> int")
@@ -66,4 +68,5 @@ class TypeInfSpec extends AnyFunSuite {
   checkType("(1 true) pop", "-> int")
 
   checkType("\\dup dup", "-> ('a -> 'a, 'a), ('a -> 'a, 'a)")
+
 }
