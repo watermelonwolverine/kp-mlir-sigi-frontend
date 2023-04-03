@@ -381,6 +381,8 @@ package emitmlir {
             collectFreeVarsRec(b, aScope)
           case TFunApply(_, name) => scope.copy(used = scope.used + name)
           case TNameTopN(_, names) => scope.copy(bound = scope.bound ++ names)
+          case TPushQuote(term) => collectFreeVarsRec(term, scope)
+          case TPushList(_, items) => items.foldRight(scope)(collectFreeVarsRec)
           // no other term affects scope
           case _ => scope
       }
