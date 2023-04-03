@@ -1,4 +1,5 @@
 module {
+
     // __main__: -> bool
     func.func @__main__(%s0: !sigi.stack) -> !sigi.stack {
         %v1 = arith.constant 1: i1

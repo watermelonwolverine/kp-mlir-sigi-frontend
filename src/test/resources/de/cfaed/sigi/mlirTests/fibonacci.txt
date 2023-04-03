@@ -1,4 +1,19 @@
 module {
+    
+    func.func @"cond"(%s0: !sigi.stack) -> !sigi.stack {
+        %s1, %elseThunk = sigi.pop %s0: !closure.box<(!sigi.stack) -> !sigi.stack>
+        %s2, %thenThunk = sigi.pop %s1: !closure.box<(!sigi.stack) -> !sigi.stack>
+        %s3, %condition = sigi.pop %s2: i1
+        %thunk = scf.if %condition -> !closure.box<(!sigi.stack) -> !sigi.stack> {
+            scf.yield %thenThunk
+        } else {
+            scf.yield %elseThunk
+        }
+        %res = closure.call %thunk(%s3) : (!sigi.stack) -> !sigi.stack
+        return %res
+    }
+
+
     // fib_naive: int -> int
     func.func @fib_naive(%s0: !sigi.stack) -> !sigi.stack {
         // -> n;
@@ -44,9 +59,13 @@ module {
             closure.return %s25: !sigi.stack
         }
         %s26 = sigi.push %s9, %v9: !closure.box<(!sigi.stack) -> !sigi.stack>
-        %s27 = func.call @":if:"(%s26) : (!sigi.stack) -> !sigi.stack // bool, (-> int), (-> int) -> int
-        return %s27: !sigi.stack
+        %s27 = func.call @cond(%s26) : (!sigi.stack) -> !sigi.stack // bool, (-> int), (-> int) -> (-> int)
+        // apply intrinsic
+        %s28, %v21 = sigi.pop %s27: !closure.box<(!sigi.stack) -> !sigi.stack>
+        %s29 = closure.call %v21 (%s28) : !closure.box<(!sigi.stack) -> !sigi.stack>
+        return %s29: !sigi.stack
     }
+
     // fib_tailrec: int -> int
     func.func @fib_tailrec(%s0: !sigi.stack) -> !sigi.stack {
         %v1 = arith.constant 1: i32
@@ -56,6 +75,7 @@ module {
         %s3 = func.call @fib_tailrec_helper(%s2) : (!sigi.stack) -> !sigi.stack // int, int, int -> int
         return %s3: !sigi.stack
     }
+
     // fib_tailrec_helper: int, int, int -> int
     func.func @fib_tailrec_helper(%s0: !sigi.stack) -> !sigi.stack {
         // -> n, a, b;
@@ -110,13 +130,20 @@ module {
                 closure.return %s33: !sigi.stack
             }
             %s34 = sigi.push %s20, %v21: !closure.box<(!sigi.stack) -> !sigi.stack>
-            %s35 = func.call @":if:"(%s34) : (!sigi.stack) -> !sigi.stack // bool, (-> int), (-> int) -> int
-            closure.return %s35: !sigi.stack
+            %s35 = func.call @cond(%s34) : (!sigi.stack) -> !sigi.stack // bool, (-> int), (-> int) -> (-> int)
+            // apply intrinsic
+            %s36, %v29 = sigi.pop %s35: !closure.box<(!sigi.stack) -> !sigi.stack>
+            %s37 = closure.call %v29 (%s36) : !closure.box<(!sigi.stack) -> !sigi.stack>
+            closure.return %s37: !sigi.stack
         }
-        %s36 = sigi.push %s11, %v11: !closure.box<(!sigi.stack) -> !sigi.stack>
-        %s37 = func.call @":if:"(%s36) : (!sigi.stack) -> !sigi.stack // bool, (-> int), (-> int) -> int
-        return %s37: !sigi.stack
+        %s38 = sigi.push %s11, %v11: !closure.box<(!sigi.stack) -> !sigi.stack>
+        %s39 = func.call @cond(%s38) : (!sigi.stack) -> !sigi.stack // bool, (-> int), (-> int) -> (-> int)
+        // apply intrinsic
+        %s40, %v30 = sigi.pop %s39: !closure.box<(!sigi.stack) -> !sigi.stack>
+        %s41 = closure.call %v30 (%s40) : !closure.box<(!sigi.stack) -> !sigi.stack>
+        return %s41: !sigi.stack
     }
+
     // __main__: ->
     func.func @__main__(%s0: !sigi.stack) -> !sigi.stack {
         %v1 = arith.constant 20: i32

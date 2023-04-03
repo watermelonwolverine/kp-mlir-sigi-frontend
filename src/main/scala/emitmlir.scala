@@ -112,7 +112,8 @@ package emitmlir {
       case KString => s"\"$value\""
 
     def println(str: String): Unit = {
-      (0 until indent).foreach { _ => out.print("    ") }
+      if (str.nonEmpty)
+        (0 until indent).foreach { _ => out.print("    ") }
       out.println(str)
     }
 
@@ -120,6 +121,7 @@ package emitmlir {
       resetLocals()
       val TFunDef(name, ty, body) = funDef
 
+      println("")
       println(s"// $name: $ty")
       println(s"func.func @$name(${envIdGen.cur}: !sigi.stack) -> !sigi.stack {")
       indent += 1

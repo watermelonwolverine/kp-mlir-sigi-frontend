@@ -70,11 +70,11 @@ class ParserSpec extends AnyFunSuite with Matchers {
   checkExpr("-> x, y; y", names("x", "y") ~ app("y"))
 
   checkExpr("if (true) 1 else 2",
-    p(true) ~ (Quote(p(1)) ~ Quote(p(2)) ~ app(builtins.Intrinsic_if))
+    p(true) ~ (Quote(p(1)) ~ Quote(p(2)) ~ (app("cond") ~ app("apply")))
   )
 
   checkExpr("if 1 else 2",
-    Quote(p(1)) ~ Quote(p(2)) ~ app(builtins.Intrinsic_if)
+    Quote(p(1)) ~ Quote(p(2)) ~ (app("cond") ~ app("apply"))
   )
 
 

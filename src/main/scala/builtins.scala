@@ -128,9 +128,6 @@ package builtins {
     }
   }
 
-  // intrinsics should have a name which cannot be an identifier in the source lang
-  val Intrinsic_if = ":if:"
-
   val ReplBuiltinSpecs: Map[String, BuiltinFunSpec] = Map(
 
     fun("env", StackType()) { _ =>
@@ -163,8 +160,7 @@ package builtins {
                                                          |        %res = closure.call %thunk(%s3) : (!sigi.stack) -> !sigi.stack
                                                          |        return %res
                                                          |    }
-                                                         |
-                                                         |}""".stripMargin
+                                                         |""".stripMargin
                                                     )) {
         case elseV :: thenV :: VPrimitive(KBool, condition) :: tl =>
           Right((if condition then thenV else elseV) :: tl)
@@ -237,7 +233,6 @@ package builtins {
         case a :: tl => Right(VFun(Some("quote"), StackType.generic1(StackType.pushOne), env => Right(env.push(a))) :: tl)
       },
 
-      stdLibFun(s"""define "$Intrinsic_if" ('A, bool, ('A -> 'B), ('A -> 'B) -> 'B): cond apply;;""")(cond._2, apply._2),
       stdLibFun("""define show ('a ->): pp pop;;""")(pp._2, pop._2),
 
       // print and pass: print the top of the stack but leave it there
