@@ -490,8 +490,6 @@ package emitmlir {
       //  If any called fun is generic, ground it based on the types at the call site.
       //  Collect non-generic and monomorphized funs for emission.
       //  You can't emit a generic fun or a generic quote.
-
-      // todo stack overflow when typing generic quotes:  1 2 true if { -> x, y; x } else {-> x, y ; y} apply
       emitModule(out)(EmittableModule(usedStdLibFuns, module.functions, module.mainExpr))
     }
 

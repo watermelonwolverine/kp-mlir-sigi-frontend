@@ -243,7 +243,7 @@ package builtins {
       })
   }
 
-  val PredefinedSymbols: Map[String, KValue] = BuiltinSpecs.map(s => s._1 -> s._2.asValue).toMap
-  val ReplBuiltins: Map[String, KValue] = ReplBuiltinSpecs.map(s => s._1 -> s._2.asValue).toMap
+  val PredefinedSymbols: Map[String, KValue] = BuiltinSpecs.map(s => s._1 -> s._2.asValue)
+  val ReplBuiltins: Map[String, KValue] = ReplBuiltinSpecs.map(s => s._1 -> s._2.asValue)
 
 }

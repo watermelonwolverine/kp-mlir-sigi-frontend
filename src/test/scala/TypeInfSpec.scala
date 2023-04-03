@@ -23,6 +23,8 @@ class TypeInfSpec extends AnyFunSuite {
     }
   }
 
+
+
   checkType("if (true) 1 else 2", "-> int")
 
   checkType("1 2 \\swap", "-> int, int, ('a, 'b -> 'b, 'a)")
@@ -68,5 +70,11 @@ class TypeInfSpec extends AnyFunSuite {
   checkType("(1 true) pop", "-> int")
 
   checkType("\\dup dup", "-> ('a -> 'a, 'a), ('a -> 'a, 'a)")
+
+  // Stackoverflow when typing this:
+  // 1 2 true if { -> x, y; x } else ({-> x, y ; y} apply)
+  // (it's not well formed). The well formed term:
+  // (1 2 true if { -> x, y; x } else {-> x, y ; y}) apply
+  // types correctly.
 
 }
