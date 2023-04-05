@@ -36,5 +36,6 @@ class MlirCompilSpec extends AnyFunSuite {
   doTest("intExpr")
   doTest("builtinOps")
   doTest("fibonacci")
+  doTest("generic1")
 
 }

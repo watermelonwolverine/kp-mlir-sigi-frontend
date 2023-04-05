@@ -29,7 +29,7 @@ package tokens {
   case class ELIF() extends KToken
   case object TRUE extends KToken
   case object FALSE extends KToken
-  case object DEFINE extends KToken
+  case object DEFINE_FUNC extends KToken
   case object SEMI extends KToken
   case object PHAT_SEMI extends KToken
   case object COMMA extends KToken
@@ -91,7 +91,7 @@ package tokens {
         | "elif" ^^^ ELIF()
         | "true" ^^^ TRUE
         | "false" ^^^ FALSE
-        | "define" ^^^ DEFINE
+        | "func" ^^^ DEFINE_FUNC
 
     override def token: SigiLexer.Parser[SigiLexer.Token] =
       positioned(keyword | ident | number | punct | op | string | tvar | rowvar)

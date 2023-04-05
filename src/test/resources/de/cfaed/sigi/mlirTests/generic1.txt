@@ -1,0 +1,9 @@
+// drops the 2nd value from the top
+define genericDrop ('a, 'a -> 'a):  swap pop;;
+
+1 2 3 genericDrop // stack is [1, 3]
+(+) // stack is [4]
+show
+
+
+

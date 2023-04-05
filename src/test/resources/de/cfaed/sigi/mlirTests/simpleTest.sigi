@@ -1,5 +1,5 @@
 
-define double(int -> int): dup (+);; # 1 (<<)
+func double(int -> int): dup (+);; # 1 (<<)
 
 (2 double double = 8) show;;      # 2
 

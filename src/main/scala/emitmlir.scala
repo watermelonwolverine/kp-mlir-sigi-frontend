@@ -15,7 +15,7 @@ import scala.collection.mutable
 package emitmlir {
 
   import de.cfaed.sigi.builtins.{BuiltinFunSpec, FrontendIntrinsic, MlirDefinition, StdLibDefinition}
-  import de.cfaed.sigi.emitmlir.MlirBuilder.{BuiltinIntOps, BuiltinUnaryOps, TargetFunType}
+  import de.cfaed.sigi.emitmlir.MlirBuilder.{BuiltinIntOps, BuiltinUnaryOps, ClosureT, TargetFunType}
 
   import scala.collection.immutable.List
   import scala.collection.mutable.ListBuffer

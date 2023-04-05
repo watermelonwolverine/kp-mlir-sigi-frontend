@@ -79,20 +79,20 @@ class ParserSpec extends AnyFunSuite with Matchers {
 
 
   checkExpr("-> x, y; x * y", names("x", "y") ~ (app("x") ~ app("y") ~ app("*")))
-  checkTreeMatches("define double(int-> int): ->x; 2*x;;") {
+  checkTreeMatches("func double(int-> int): ->x; 2*x;;") {
     case KFunDef("double", AFunType(List(_), List(_)), _) =>
   }
 
-  checkTreeMatches("define id('a -> 'a): ->x; x;;") {
+  checkTreeMatches("func id('a -> 'a): ->x; x;;") {
     case KFunDef("id", AFunType(List(ATypeVar("'a")), List(ATypeVar("'a"))), _) =>
   }
 
 
-  checkTreeMatches("define id('a list -> 'b list): pop [];;") {
+  checkTreeMatches("func id('a list -> 'b list): pop [];;") {
     case KFunDef("id", AFunType(List(ATypeCtor("list", List(ATypeVar("'a")))), _), _) =>
   }
 
-  checkTreeMatches("define map('a list, ('a -> 'b) -> 'b list): pop pop [];;") {
+  checkTreeMatches("func map('a list, ('a -> 'b) -> 'b list): pop pop [];;") {
     case KFunDef("map", AFunType(
     List(
     ATypeCtor("list", List(ATypeVar("'a"))),
@@ -101,7 +101,7 @@ class ParserSpec extends AnyFunSuite with Matchers {
     List(ATypeCtor("list", List(ATypeVar("'b"))))), _) =>
   }
 
-  checkTreeMatches("define id('S, 'a -> 'S, 'a): ->x; x;;") {
+  checkTreeMatches("func id('S, 'a -> 'S, 'a): ->x; x;;") {
     case KFunDef("id", funT@AFunType(List(ARowVar("'S"), ATypeVar("'a")), List(ARowVar("'S"), ATypeVar("'a"))), _) =>
       val resolved = types.resolveFunType(Env.Default.toTypingScope)(funT)
       val expected = KFun(StackType.generic1(StackType.symmetric1))

@@ -114,7 +114,7 @@ package ast {
 
     private def funDef0(idParser: Parser[STRING | ID]): Parser[KFunDef] =
     // note that the normal sigi grammar does not use a semi
-      DEFINE ~> idParser ~ inParens(funTy) ~ COLON ~ expr <~ PHAT_SEMI ^^ {
+      DEFINE_FUNC ~> idParser ~ inParens(funTy) ~ COLON ~ expr <~ PHAT_SEMI ^^ {
         case (id: ID) ~ ty ~ _ ~ body => KFunDef(id.name, ty, body).setPos(id.pos)
         case (id: STRING) ~ ty ~ _ ~ body => KFunDef(id.value, ty, body).setPos(id.pos)
       }
