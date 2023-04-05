@@ -1,19 +1,5 @@
 module {
-    func.func @"cond"(%s0: !sigi.stack) -> !sigi.stack {
-        %s1, %elseThunk = sigi.pop %s0: !closure.box<(!sigi.stack) -> !sigi.stack>
-        %s2, %thenThunk = sigi.pop %s1: !closure.box<(!sigi.stack) -> !sigi.stack>
-        %s3, %condition = sigi.pop %s2: i1
-        %thunk = scf.if %condition -> !closure.box<(!sigi.stack) -> !sigi.stack> {
-            scf.yield %thenThunk: !closure.box<(!sigi.stack) -> !sigi.stack>
-        } else {
-            scf.yield %elseThunk: !closure.box<(!sigi.stack) -> !sigi.stack>
-        }
-        %res = closure.call %thunk(%s3) : !closure.box<(!sigi.stack) -> !sigi.stack>
-        return %res: !sigi.stack
-    }
-
     func.func private @"show"(!sigi.stack) -> !sigi.stack
-
     // fib_naive: int -> int
     func.func @fib_naive(%s0: !sigi.stack) -> !sigi.stack {
         // -> n;
@@ -59,11 +45,19 @@ module {
             closure.return %s25: !sigi.stack
         }
         %s26 = sigi.push %s9, %v9: !closure.box<(!sigi.stack) -> !sigi.stack>
-        %s27 = func.call @cond(%s26) : (!sigi.stack) -> !sigi.stack // bool, (-> int), (-> int) -> (-> int)
+        %s27, %v21 = sigi.pop %s26: !closure.box<(!sigi.stack) -> !sigi.stack>
+        %s28, %v22 = sigi.pop %s27: !closure.box<(!sigi.stack) -> !sigi.stack>
+        %s29, %v23 = sigi.pop %s28: i1
+        %v24 = scf.if %v23 -> !closure.box<(!sigi.stack) -> !sigi.stack> {
+          scf.yield %v22: !closure.box<(!sigi.stack) -> !sigi.stack>
+        } else {
+          scf.yield %v21: !closure.box<(!sigi.stack) -> !sigi.stack>
+        }
+        %s30 = sigi.push %s29, %v24: !closure.box<(!sigi.stack) -> !sigi.stack>
         // apply intrinsic
-        %s28, %v21 = sigi.pop %s27: !closure.box<(!sigi.stack) -> !sigi.stack>
-        %s29 = closure.call %v21 (%s28) : !closure.box<(!sigi.stack) -> !sigi.stack>
-        return %s29: !sigi.stack
+        %s31, %v25 = sigi.pop %s30: !closure.box<(!sigi.stack) -> !sigi.stack>
+        %s32 = closure.call %v25 (%s31) : !closure.box<(!sigi.stack) -> !sigi.stack>
+        return %s32: !sigi.stack
     }
     // fib_tailrec: int -> int
     func.func @fib_tailrec(%s0: !sigi.stack) -> !sigi.stack {
@@ -128,18 +122,34 @@ module {
                 closure.return %s33: !sigi.stack
             }
             %s34 = sigi.push %s20, %v23: !closure.box<(!sigi.stack) -> !sigi.stack>
-            %s35 = func.call @cond(%s34) : (!sigi.stack) -> !sigi.stack // bool, (-> int), (-> int) -> (-> int)
+            %s35, %v31 = sigi.pop %s34: !closure.box<(!sigi.stack) -> !sigi.stack>
+            %s36, %v32 = sigi.pop %s35: !closure.box<(!sigi.stack) -> !sigi.stack>
+            %s37, %v33 = sigi.pop %s36: i1
+            %v34 = scf.if %v33 -> !closure.box<(!sigi.stack) -> !sigi.stack> {
+              scf.yield %v32: !closure.box<(!sigi.stack) -> !sigi.stack>
+            } else {
+              scf.yield %v31: !closure.box<(!sigi.stack) -> !sigi.stack>
+            }
+            %s38 = sigi.push %s37, %v34: !closure.box<(!sigi.stack) -> !sigi.stack>
             // apply intrinsic
-            %s36, %v31 = sigi.pop %s35: !closure.box<(!sigi.stack) -> !sigi.stack>
-            %s37 = closure.call %v31 (%s36) : !closure.box<(!sigi.stack) -> !sigi.stack>
-            closure.return %s37: !sigi.stack
+            %s39, %v35 = sigi.pop %s38: !closure.box<(!sigi.stack) -> !sigi.stack>
+            %s40 = closure.call %v35 (%s39) : !closure.box<(!sigi.stack) -> !sigi.stack>
+            closure.return %s40: !sigi.stack
         }
-        %s38 = sigi.push %s11, %v13: !closure.box<(!sigi.stack) -> !sigi.stack>
-        %s39 = func.call @cond(%s38) : (!sigi.stack) -> !sigi.stack // bool, (-> int), (-> int) -> (-> int)
+        %s41 = sigi.push %s11, %v13: !closure.box<(!sigi.stack) -> !sigi.stack>
+        %s42, %v36 = sigi.pop %s41: !closure.box<(!sigi.stack) -> !sigi.stack>
+        %s43, %v37 = sigi.pop %s42: !closure.box<(!sigi.stack) -> !sigi.stack>
+        %s44, %v38 = sigi.pop %s43: i1
+        %v39 = scf.if %v38 -> !closure.box<(!sigi.stack) -> !sigi.stack> {
+          scf.yield %v37: !closure.box<(!sigi.stack) -> !sigi.stack>
+        } else {
+          scf.yield %v36: !closure.box<(!sigi.stack) -> !sigi.stack>
+        }
+        %s45 = sigi.push %s44, %v39: !closure.box<(!sigi.stack) -> !sigi.stack>
         // apply intrinsic
-        %s40, %v32 = sigi.pop %s39: !closure.box<(!sigi.stack) -> !sigi.stack>
-        %s41 = closure.call %v32 (%s40) : !closure.box<(!sigi.stack) -> !sigi.stack>
-        return %s41: !sigi.stack
+        %s46, %v40 = sigi.pop %s45: !closure.box<(!sigi.stack) -> !sigi.stack>
+        %s47 = closure.call %v40 (%s46) : !closure.box<(!sigi.stack) -> !sigi.stack>
+        return %s47: !sigi.stack
     }
     // __main__: ->
     func.func @__main__(%s0: !sigi.stack) -> !sigi.stack attributes {sigi.main} {

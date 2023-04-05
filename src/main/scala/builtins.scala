@@ -151,22 +151,7 @@ package builtins {
 
     val cond = // select one of two values
       stackFun("cond", StackType.generic1(ta => StackType(consumes = List(KBool, ta, ta), produces = List(ta))),
-               compilationStrategy = MlirDefinition(name =>
-                                                      s"""
-                                                         |    func.func @"$name"(%s0: !sigi.stack) -> !sigi.stack {
-                                                         |        %s1, %elseThunk = sigi.pop %s0: !closure.box<(!sigi.stack) -> !sigi.stack>
-                                                         |        %s2, %thenThunk = sigi.pop %s1: !closure.box<(!sigi.stack) -> !sigi.stack>
-                                                         |        %s3, %condition = sigi.pop %s2: i1
-                                                         |        %thunk = scf.if %condition -> !closure.box<(!sigi.stack) -> !sigi.stack> {
-                                                         |            scf.yield %thenThunk: !closure.box<(!sigi.stack) -> !sigi.stack>
-                                                         |        } else {
-                                                         |            scf.yield %elseThunk: !closure.box<(!sigi.stack) -> !sigi.stack>
-                                                         |        }
-                                                         |        %res = closure.call %thunk(%s3) : !closure.box<(!sigi.stack) -> !sigi.stack>
-                                                         |        return %res: !sigi.stack
-                                                         |    }
-                                                         |    """.stripMargin.stripIndent()
-                                                    )) {
+               compilationStrategy = FrontendIntrinsic) {
         case elseV :: thenV :: VPrimitive(KBool, condition) :: tl =>
           Right((if condition then thenV else elseV) :: tl)
       }

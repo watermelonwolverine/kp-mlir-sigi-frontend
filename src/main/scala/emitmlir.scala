@@ -99,10 +99,7 @@ package emitmlir {
       case KInt => "i32"
       case KBool => "i1"
       case KString => "!sigi.str"
-      case KFun(stack) =>
-        val consumed = stack.consumes.map(mlirType).mkString(",")
-        val produced = stack.produces.map(mlirType).mkString(",")
-        s"!sigi.fun<[$consumed], [$produced]>"
+      case KFun(_) => ClosureT
       case KList(item) => s"!sigi.list<${mlirType(item)}>"
       case _ => throw new IllegalArgumentException(s"Cannot emit type with variable $ty")
 
@@ -268,6 +265,22 @@ package emitmlir {
           val popa = renderPop(a)
           renderPush(b, popb)
           renderPush(a, popa)
+
+        // cond intrinsic
+        case TFunApply(StackType(List(KBool, a, b), List(c)), "cond") if a == b && b == c =>
+          val ty = mlirType(c)
+          val popElse = renderPop(b)
+          val popThen = renderPop(a)
+          val popCondition = renderPop(KBool)
+          val resultId = valIdGen.next()
+          println(
+            s"""
+               |$resultId = scf.if $popCondition -> $ty {
+               |  scf.yield $popThen: $ty
+               |} else {
+               |  scf.yield $popElse: $ty
+               |}""".stripMargin)
+          renderPush(ty, resultId)
 
         // higher-order function.
         case TFunApply(_, "apply") =>
