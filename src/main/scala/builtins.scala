@@ -128,22 +128,27 @@ package builtins {
     }
   }
 
-  val ReplBuiltinSpecs: Map[String, BuiltinFunSpec] = Map(
+  val ReplBuiltinSpecs: Map[String, BuiltinFunSpec] =
+    Map(
 
-    fun("env", StackType()) { _ =>
-      env =>
-        println(s"stack (top is right): ${env.stackToString}")
-        println(s"env: ${env.varsToString}")
-        Right(env)
-    },
-    stackFun("typeof", StackType.generic1(StackType.symmetric1)) {
-      case stack@(hd :: _) =>
-        println("typeof: " + hd.dataType)
-        Right(stack)
-    }
-    )
+
+      fun("env", StackType()) { _ =>
+        env =>
+          println(s"stack (top is right): ${env.stackToString}")
+          println(s"env: ${env.varsToString}")
+          Right(env)
+      },
+      stackFun("typeof", StackType.generic1(StackType.symmetric1)) {
+        case stack@(hd :: _) =>
+          println("typeof: " + hd.dataType)
+          Right(stack)
+      }
+      )
 
   val BuiltinSpecs: Map[String, BuiltinFunSpec] = {
+    // this is a forward declaration, the dialect should do something with it.
+    val mlirFwdDeclaration = MlirDefinition(name => s"func.func private @\"$name\"(!sigi.stack) -> !sigi.stack")
+
     val cond = // select one of two values
       stackFun("cond", StackType.generic1(ta => StackType(consumes = List(KBool, ta, ta), produces = List(ta))),
                compilationStrategy = MlirDefinition(name =>
@@ -174,7 +179,8 @@ package builtins {
       case hd :: tl => Right(hd :: hd :: tl)
     }
     // print and pass: print the top of the stack but leave it there
-    val pp = stackFun("pp", StackType.generic1(StackType.symmetric1)) {
+    val pp = stackFun("pp", StackType.generic1(StackType.symmetric1),
+                      compilationStrategy = mlirFwdDeclaration) {
       case stack@(hd :: _) =>
         println(s"pp: $hd")
         Right(stack)
@@ -235,8 +241,7 @@ package builtins {
       },
 
       stackFun("show", StackType.generic1(a => StackType(consumes = List(a))),
-               // this is a forward declaration, the dialect should do something with it.
-               compilationStrategy = MlirDefinition(name => s"func.func private @\"$name\"(!sigi.stack) -> !sigi.stack")) {
+               compilationStrategy = mlirFwdDeclaration) {
         case stack@(hd :: _) =>
           println(s"$hd")
           Right(stack)
