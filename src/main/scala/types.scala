@@ -554,6 +554,7 @@ package types {
   /** Check that the given type is compatible with the bound.
     * This means that the type is at least as general as the bound.
     * This represents a subtyping relation between function types.
+    * TODO subtyping during unification.
     *
     * To check this, the bound is treated as a ground type (its
     * type variables are treated as types, not variables). A round

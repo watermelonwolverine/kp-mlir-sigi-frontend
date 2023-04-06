@@ -80,26 +80,41 @@ funty    ::= stacklist? "->" stacklist?
 stacklist::= (dty | rowvar) ("," (dty | rowvar))*
 ```
 
-Types can be generic, as can be seen in the `typector` production. Type variables are written like `'a` or `'b`, à la [[OCaml]].
+Types can be generic, as can be seen in the `typector` production. Type variables are written like `'a` or `'b`, and type constructors are applied postfix, like in OCaml.
 
 #### Stack types
 
 A stack type is written $c_1, \ldots, c_n \to p_1, \ldots, p_m$.  This is the type of a function that pops $n$ arguments from the stack and pushes $m$ results.The $c_i$ and $p_j$ are [[#data types|data types]].
 
-Arguments are popped right-to-left and results are pushed left-to-right (i.e., the top of the stack is always on the right).
+Arguments are popped right-to-left and results are pushed left-to-right (i.e., the top of the stack is always written on the right).
 This convention allows easily seeing how the stack changes when the function is evaluated: here, the $c_1, \ldots, c_n$ (with $c_n$ the top) will be replaced by $p_1, \ldots, p_m$ (with $p_m$ the top).
 
 All terms of the language have a stack type, for instance, the expression `1` has type `-> int`, because the effect of its evaluation is pushing the number 1 on the stack.
 
+#### Subtyping
+
+Most types are singular and cannot have subtypes or supertypes.
+However, defining a subtyping relation on stack types allows for more flexibility when declaring and using functions.
+
+> Given types $s$ and $t$, $s <: t$ iff $s = t$, or $s = (\mathbf{a} \to \mathbf{b}), t = (\mathbf{c)\to\mathbf{d})$ and there exists a substitution $\theta$ such that $\theta\mathbf{b} <: \mathbf{d}$ and $\theta\mathbf{a} >: \mathbf{c}$.
+
+This is the classic subtyping rule for function types, whereby subtypes of a function type are the function types of more general functions, and supertypes are more specific.
+The substitution thing has to do with generic functions.
+The type `s = 'a, 'b -> 'a` is more general than `t = 'c, 'c -> 'c`, meaning it should hold that $s <: t$.
+To show this, we define a substitution $\theta$ that maps both `'a` and `'b` to `'c`.
+It then holds that $\theta s = t$, so $\theta s <: t$ and so $s <: t$.
+
+
+
 ### Typing and evaluation
 
-- `id` resolves a name in the enclosing scope. Names resolve to a *value*, a value having a data type, not a stack type. 
-  - If `id` refers to a function of type $\mathbf{c}\to\mathbf{p}$, then the expression has that function type. 
-  - If `id` refers to another kind of value of type $t$, then the expression has type $\to t$. 
-  - If `id` does not refer to a name in scope, the expression is not well-typed.
-- `{ e }` creates a function value whose expansion is the term `e` and pushes it on the stack. If $\mathtt{e}: t$, then $\mathtt{\{\,e\,\}} :\, \to t$.
-- `-> x1,...,xn;` pops the $n$ values on top of the stack and binds them to names in the enclosing scope. The top of the stack is named $x_n$, the next value is named $x_{n-1}$, etc. The type of this expression is $'a_1, \ldots, 'a_n \to$, where the $'a_i$ are fresh type variables.
-- `e1 e2` evaluates `e1`, then evaluates `e2`. In more abstract terms, this denotes the *composition* of both stack functions.
+> - `id` resolves a name in the enclosing scope. Names resolve to a *value*, a value having a data type, not a stack type. 
+>  - If `id` refers to a function of type $\mathbf{c}\to\mathbf{p}$, then the expression has that function type. 
+>  - If `id` refers to another kind of value of type $t$, then the expression has type $\to t$. 
+>  - If `id` does not refer to a name in scope, the expression is not well-typed.
+> - `{ e }` creates a function value whose expansion is the term `e` and pushes it on the stack. If $\mathtt{e}: t$, then $\mathtt{\{\,e\,\}} :\, \to t$.
+> - `-> x1,...,xn;` pops the $n$ values on top of the stack and binds them to names in the enclosing scope. The top of the stack is named $x_n$, the next value is named $x_{n-1}$, etc. The type of this expression is $'a_1, \ldots, 'a_n \to$, where the $'a_i$ are fresh type variables.
+> - `e1 e2` evaluates `e1`, then evaluates `e2`. In more abstract terms, this denotes the *composition* of both stack functions.
 
 #### Typing the composition rule
  
@@ -108,17 +123,19 @@ For instance, let `e1: str -> int` and `e2: 'a -> str`.
 For the term to be well-formed, the outputs of `e1` (`int`) must be compatible with the inputs of `e2` (`'a`). It must then hold that `'a = int`, hence we have inferred the type variable `'a`.
 Since the intermediate `int` produced by `e1` is immediately consumed by `e2`, it does not appear in the type of the composition `e1 e2: str -> str`.
 
-Let us define a *substitution* as a function from type variables to data types or type variables.
-Assume $e_1: a_1,\ldots,a_n \to b_1,\ldots,b_m$ and $e_2: c_1,\ldots,c_t \to d_1,\ldots,d_s$. Let $q = \min (m,t)$. 
-Assume that all the $a_i, b_i, c_i, d_i$ are either data types or type variables, but not row variables (see [below](#row-polymorphic-types)). 
-Then $e_1\ e_2$ is well-typed if there exists a substitution $\theta$ such that for all $k$, $0 \leq k < q$, we have $\theta\mathbf{c}_{t-k} = \theta\mathbf{b}_{m-k}$. If that is so, then the type of the term is given by $$e_1\ e_2 : \theta\mathbf{a}, \theta(\mathbf{c}_i)_{i < {t-q}} \to \theta(\mathbf{b}_j)_{{m-q}\leq j}, \theta\mathbf{d}.$$
+> Assume $e_1: a_1,\ldots,a_n \to b_1,\ldots,b_m$ and $e_2: c_1,\ldots,c_t \to d_1,\ldots,d_s$. Let $q = \min (m,t)$. 
+Assume, to simplify, that all the $a_i, b_i, c_i, d_i$ are either data types or type variables, but not row variables (see [below](#row-polymorphic-types)).
+Then $e_1\ e_2$ is well-typed if there exists a substitution $\theta$ such that for all $k$, $0 \leq k < q$, we have 
+$$\theta\mathbf{c}_{t-k} <: \theta\mathbf{b}_{m-k}$$, where $<:$ is the [subtyping](#subtyping) relation.
+If that is so, then the type of the term is given by 
+$$e_1\ e_2 : \theta\mathbf{a}, \theta(\mathbf{c}_i)_{i < {t-q}} \to \theta(\mathbf{b}_j)_{{m-q}\leq j}, \theta\mathbf{d}.$$
 
-This rule allows "spilling" of arguments that are not relevant to the composition rule, for instance, if `e1: 'a -> 'a, int` and `e2: -> str`, `e1 e2` is still well-typed, even though `e2` does not consume the results of `e1`. The composed type is `'a -> 'a, int, str`.
+The rule allows "spilling" of arguments that are not relevant to the composition rule, for instance, if `e1: 'a -> 'a, int` and `e2: -> str`, `e1 e2` is still well-typed, even though `e2` does not consume the results of `e1`. The composed type is `'a -> 'a, int, str`.
 
 #### Scoping and the composition rule
 
-If `e1 e2` is well-typed as described above, then all names introduced by `e1` are in scope in `e2`, and all names introduced by `e1` and `e2` are introduced by `e1 e2` in the enclosing scope.
-The types of these names are substituted with $\theta$ in the enclosing scope.
+> If `e1 e2` is well-typed as described above, then all names introduced by `e1` are in scope in `e2`, and all names introduced by `e1` and `e2` are introduced by `e1 e2` in the enclosing scope.
+> The types of these names are substituted with $\theta$ in the enclosing scope.
 
 This means that names are in scope in every term that follows them.
 The use of the substitution gives more specific types to the bindings.
