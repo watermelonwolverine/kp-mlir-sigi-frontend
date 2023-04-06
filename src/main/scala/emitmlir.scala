@@ -20,6 +20,7 @@ package emitmlir {
   import scala.collection.immutable.List
   import scala.collection.mutable.ListBuffer
   import scala.io.Source
+  import scala.sys.exit
 
   sealed trait MlirValue {
 
@@ -513,9 +514,9 @@ package emitmlir {
   }
 
   @main
-  def sigiToMlir(): Unit = parseSigiAndEmitMlir(System.out)(io.Source.stdin)
-  @main
-  def testDumping(): Unit = parseSigiAndEmitMlir(System.out)(io.Source.fromString("1 -> x; { x } 2 -> x; { x }"))
-
-
+  def sigiToMlir(fileName: String): Unit =
+    val source = fileName match
+      case "-" => io.Source.stdin
+      case fileName => io.Source.fromFile(fileName)
+    parseSigiAndEmitMlir(System.out)(source)
 }
