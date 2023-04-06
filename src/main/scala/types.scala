@@ -515,6 +515,25 @@ package types {
     }
   }
 
+  def doValidation(env: TypingScope)(ast: KStatement): Either[SigiTypeError, TypedStmt] = {
+    ast match
+      case KBlock(stmts) =>
+
+        val fileEnv = stmts.collect {
+          case KFunDef(name, ty, _) => resolveFunType(env)(ty).map((name, _))
+        }.flattenList.map(_.toMap).map(env.addBindings)
+
+        fileEnv.flatMap(env => stmts.map(doValidation(env)).flattenList.map(TBlock.apply).map(_.setPos(ast.pos)))
+
+      case KExprStatement(e) => types.assignType(env)(e).map(TExprStmt.apply).map(_.setPos(ast.pos))
+      case KFunDef(name, ty, body) =>
+        for {
+          // todo should unify the type of the body and the type of the signature
+          funTy <- types.resolveFunType(env)(ty)
+          typedBody <- types.assignType(env.addBindings(List(name -> funTy)))(body)
+        } yield TFunDef(name, funTy.stack, typedBody).setPos(ast.pos)
+  }
+
   def checkMainExprType(term: TypedExpr): Option[SigiTypeError] =
     if term.stackTy.simplify.consumes.nonEmpty
     then Some(SigiTypeError.mainExprConsumesElements(term.stackTy).setPos(term.pos))
@@ -571,24 +590,6 @@ package types {
       .substStackType(st).simplify
   }
 
-  def doValidation(env: TypingScope)(ast: KStatement): Either[SigiTypeError, TypedStmt] = {
-    ast match
-      case KBlock(stmts) =>
-
-        val fileEnv = stmts.collect {
-          case KFunDef(name, ty, _) => resolveFunType(env)(ty).map((name, _))
-        }.flattenList.map(_.toMap).map(env.addBindings)
-
-        fileEnv.flatMap(env => stmts.map(doValidation(env)).flattenList.map(TBlock.apply).map(_.setPos(ast.pos)))
-
-      case KExprStatement(e) => types.assignType(env)(e).map(TExprStmt.apply).map(_.setPos(ast.pos))
-      case KFunDef(name, ty, body) =>
-        for {
-          // todo should unify the type of the body and the type of the signature
-          funTy <- types.resolveFunType(env)(ty)
-          typedBody <- types.assignType(env.addBindings(List(name -> funTy)))(body)
-        } yield TFunDef(name, funTy.stack, typedBody).setPos(ast.pos)
-  }
 
 
   /** Turn a [[KExpr]] into a [[TypedExpr]] by performing type inference. */
