@@ -109,9 +109,9 @@ It then holds that $\theta s = t$, so $\theta s <: t$ and so $s <: t$.
 ### Typing and evaluation
 
 > - `id` resolves a name in the enclosing scope. Names resolve to a *value*, a value having a data type, not a stack type. 
->  - If `id` refers to a function of type $\mathbf{c}\to\mathbf{p}$, then the expression has that function type. 
->  - If `id` refers to another kind of value of type $t$, then the expression has type $\to t$. 
->  - If `id` does not refer to a name in scope, the expression is not well-typed.
+>   - If `id` refers to a function of type $\mathbf{c}\to\mathbf{p}$, then the expression has that function type. 
+>   - If `id` refers to another kind of value of type $t$, then the expression has type $\to t$. 
+>   - If `id` does not refer to a name in scope, the expression is not well-typed.
 > - `{ e }` creates a function value whose expansion is the term `e` and pushes it on the stack. If $\mathtt{e}: t$, then $\mathtt{\{\,e\,\}} :\, \to t$.
 > - `-> x1,...,xn;` pops the $n$ values on top of the stack and binds them to names in the enclosing scope. The top of the stack is named $x_n$, the next value is named $x_{n-1}$, etc. The type of this expression is $'a_1, \ldots, 'a_n \to$, where the $'a_i$ are fresh type variables.
 > - `e1 e2` evaluates `e1`, then evaluates `e2`. In more abstract terms, this denotes the *composition* of both stack functions.
