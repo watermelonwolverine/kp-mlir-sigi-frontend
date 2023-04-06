@@ -106,20 +106,10 @@ package ast {
         case consumes ~ _ ~ produces => AFunType(consumes, produces)
       }
 
-    private def inParens[P](p: Parser[P]): Parser[P] = LPAREN ~> p <~ RPAREN
-
-    // A special fun def that accepts a string literal as the ID.
-    // Used for builtin funs.
-    def builtinFunDef: Parser[KFunDef] = funDef0(id | accept("string", { case s: STRING => s }))
-
-    private def funDef0(idParser: Parser[STRING | ID]): Parser[KFunDef] =
-    // note that the normal sigi grammar does not use a semi
-      DEFINE_FUNC ~> idParser ~ inParens(funTy) ~ COLON ~ expr <~ PHAT_SEMI ^^ {
-        case (id: ID) ~ ty ~ _ ~ body => KFunDef(id.name, ty, body).setPos(id.pos)
-        case (id: STRING) ~ ty ~ _ ~ body => KFunDef(id.value, ty, body).setPos(id.pos)
+    def funDef: Parser[KFunDef] =
+      DEFINE_FUNC ~> id ~ (COLON ~> funTy) ~ (OP("=") ~> expr) <~ PHAT_SEMI ^^ {
+        case id ~ ty ~ body => KFunDef(id.name, ty, body).setPos(id.pos)
       }
-
-    def funDef: Parser[KFunDef] = funDef0(id)
 
     private def parexpr = LPAREN ~> expr <~ RPAREN
 

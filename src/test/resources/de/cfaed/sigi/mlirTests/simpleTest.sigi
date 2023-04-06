@@ -1,5 +1,5 @@
 
-func double(int -> int): dup (+);; # 1 (<<)
+let double: int -> int = dup (+);; # 1 (<<)
 
 (2 double double = 8) show;;      # 2
 

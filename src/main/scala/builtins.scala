@@ -97,28 +97,6 @@ package builtins {
       )
   }
 
-  private def stdLibFun(code: String)(funsInScope: BuiltinFunSpec*): (String, BuiltinFunSpec) = {
-    val typingScope = TypingScope(funsInScope.map(f => f.surfaceName -> KFun(f.stackType)).toMap, datamodel.TypeDescriptor.Predefined)
-
-    val result = for {
-      tree <- ast.SigiParser.apply(code, ast.SigiParser.builtinFunDef)
-      typed <- types.doValidation(typingScope)(tree)
-    } yield typed
-
-    val spec = result match
-      case Right(funDef: TFunDef) => BuiltinFunSpec(
-        surfaceName = funDef.name,
-        stackType = funDef.ty,
-        evaluationStrategy = de.cfaed.sigi.repl.eval(funDef.body),
-        compilationStrategy = StdLibDefinition(funDef)
-        )
-
-      case Left(value) => throw new IllegalStateException("Compiling builtin failed " + value)
-
-    spec.surfaceName -> spec
-  }
-
-
   private def stackFun(name: String, stackType: StackType, compilationStrategy: BuiltinCompilationStrategy = FrontendIntrinsic)
                       (definition: PartialFunction[List[KValue], Either[SigiEvalError, List[KValue]]]): (String, BuiltinFunSpec) = {
     fun(name, stackType, compilationStrategy) { ty =>

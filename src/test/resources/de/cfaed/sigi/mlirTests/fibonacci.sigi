@@ -1,12 +1,12 @@
-func fib_naive (int -> int):
+let fib_naive: int -> int =
   -> n;
   if (n <= 1) 1
   else (n - 2) fib_naive + (n - 1) fib_naive;;
 
-func fib_tailrec (int -> int):
+let fib_tailrec: int -> int =
   1 1 fib_tailrec_helper;;
 
-func fib_tailrec_helper(int, int, int -> int):
+let fib_tailrec_helper: int, int, int -> int =
   -> n, a, b;
   if (n = 0)   a
   elif (n = 1) b

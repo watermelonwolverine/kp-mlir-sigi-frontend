@@ -50,11 +50,11 @@ Additional expression forms:
   - `1 + 2 * 3` is the same as `1 2 3 (*) (+)`
 - if/elif/else are used to build conditionals. For instance `if (a) b else c` is mapped to `a { b } { c } cond apply`, where `cond` and `apply` are [language builtins](#builtins).
 
-Outside of expressions, is also possible to declare a function with the syntax `"func" id "(" stackTy ")" ":" expr ";;"`.
+Outside of expressions, is also possible to declare a function with the syntax `"let" id ":" stackTy "=" expr ";;"`.
 For instance this is the definition of a function that squares its argument:
 ```
 # this is a new function named "square"
-func square (int -> int): dup (*);;
+let square: int -> int = dup (*);;
 ```
 
 

@@ -1,5 +1,5 @@
 
-func double(int -> int): 2 (*);;
+let double: int -> int = 2 (*);;
 
 1 \double apply -> x;
 

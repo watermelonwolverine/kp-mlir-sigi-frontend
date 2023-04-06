@@ -91,7 +91,7 @@ package tokens {
         | "elif" ^^^ ELIF()
         | "true" ^^^ TRUE
         | "false" ^^^ FALSE
-        | "func" ^^^ DEFINE_FUNC
+        | "let" ^^^ DEFINE_FUNC
 
     override def token: SigiLexer.Parser[SigiLexer.Token] =
       positioned(keyword | ident | number | punct | op | string | tvar | rowvar)
