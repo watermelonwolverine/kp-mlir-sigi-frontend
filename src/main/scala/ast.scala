@@ -14,7 +14,10 @@ package ast {
 
   import de.cfaed.sigi.tokens
 
+  import java.util.Comparator
   import scala.io.Source
+
+  case class FilePos(position: Position, fileName: String)
 
   /**
     * An AST node before semantic analysis.
@@ -26,9 +29,58 @@ package ast {
   case class KFile(funs: List[KFunDef], mainExpr: KExpr)
 
 
+  implicit object FuncIdOrdering extends Ordering[FuncId] {
+    override def compare(x: FuncId, y: FuncId): Int =
+      (x, y) match
+        // builtins come first
+        case (BuiltinFuncId(a), BuiltinFuncId(b)) => a.compareTo(b)
+        case (BuiltinFuncId(_), _) => -1
+        case (_, BuiltinFuncId(_)) => 1
+        case (a: PositionedFuncId, b: PositionedFuncId) =>
+          if a.filePos.position < b.filePos.position then -1
+          else if a.filePos.position == b.filePos.position then a.sourceName.compareTo(b.sourceName)
+          else 1
+  }
+
+  /** Unique ID of a function. Uses reference equality.
+    * Different functions can have the same name, but will have distinct IDs.
+    */
+  sealed trait FuncId extends Comparable[FuncId] {
+    val sourceName: String
+
+    override def compareTo(o: FuncId): Int = FuncIdOrdering.compare(this, o)
+  }
+
+  sealed trait EmittableFuncId extends FuncId
+
+  sealed trait PositionedFuncId extends FuncId {
+    val filePos: FilePos
+  }
+
+  /** ID of a function that was written in a source file. */
+  class UserFuncId(override val sourceName: String, override val filePos: FilePos) extends EmittableFuncId with PositionedFuncId {
+  }
+
+  /** ID of a builtin function. This one uses name equality. */
+  case class BuiltinFuncId(override val sourceName: String) extends EmittableFuncId {
+    def mlirName: String = s"sigi::$sourceName"
+  }
+
+  /** ID of a variable declared in a local scope on the stack. */
+  class StackValueId(override val sourceName: String, override val filePos: FilePos) extends PositionedFuncId // not emittable
+
+  object FuncId {
+    def unapply(id: FuncId): Option[(String, Option[FilePos])] = id match
+      case id: PositionedFuncId => Some((id.sourceName, Some(id.filePos)))
+      case id => Some((id.sourceName, None))
+  }
+
   sealed trait KStatement extends KNode
+
   case class KBlock(stmts: List[KStatement]) extends KStatement
-  case class KFunDef(name: String, ty: AFunType, body: KExpr) extends KStatement
+
+  case class KFunDef(name: FuncId, ty: AFunType, body: KExpr) extends KStatement
+
   case class KExprStatement(e: KExpr) extends KStatement {
     setPos(e.pos)
   }
@@ -82,8 +134,11 @@ package ast {
   }
 
 
-  object SigiParser extends Parsers with PackratParsers {
+  class SigiParser(private val fileName: String = "") extends Parsers with PackratParsers {
     override type Elem = KToken
+
+    def nextFunId(id: ID): FuncId = new UserFuncId(id.name, FilePos(id.pos, fileName))
+
 
     private def thunk =
       LBRACE ~> expr <~ RBRACE ^^ Quote.apply
@@ -108,7 +163,7 @@ package ast {
 
     def funDef: Parser[KFunDef] =
       DEFINE_FUNC ~> id ~ (COLON ~> funTy) ~ (OP("=") ~> expr) <~ PHAT_SEMI ^^ {
-        case id ~ ty ~ body => KFunDef(id.name, ty, body).setPos(id.pos)
+        case id ~ ty ~ body => KFunDef(nextFunId(id), ty, body).setPos(id.pos)
       }
 
     private def parexpr = LPAREN ~> expr <~ RPAREN
@@ -149,8 +204,9 @@ package ast {
         | (LPAREN ~> (expr | opAsFunApply) <~ RPAREN)
         | thunk
         | ifelse
+
     private def nameTopN: Parser[KExpr] =
-       ARROW ~ rep1sep(id, COMMA) <~ SEMI ^^ { case arrow ~ ids => NameTopN(ids.map(_.name)).setPos(arrow.pos) }
+      ARROW ~ rep1sep(id, COMMA) <~ SEMI ^^ { case arrow ~ ids => NameTopN(ids.map(_.name)).setPos(arrow.pos) }
 
     private def unary: Parser[KExpr] =
       (OP("-") | OP("+") | OP("~") | OP("!")).? ~ primary ^^ {
@@ -190,18 +246,6 @@ package ast {
       case (funs: List[KFunDef]) ~ (expr: KExpr) => KFile(funs, expr)
     }
 
-    def apply(source: String): Either[SigiParseError, KExpr] = apply(source, expr)
-
-    def apply[T](source: String, parser: Parser[T]): Either[SigiParseError, T] = {
-      val reader = new KTokenScanner(source)
-      parser(reader) match {
-        case NoSuccess(msg, input) => Left(SigiParseError(msg, input.pos))
-        case Success(result, input) =>
-          if (input.atEnd) Right(result)
-          else Left(SigiParseError(s"Unparsed tokens: ${source.substring(math.max(0, input.pos.column - 1))}", input.pos))
-      }
-    }
-
     // these validation methods only perform syntactic validation.
 
     private def validate(e: KStatement): Option[SigiParseError] = e match
@@ -223,25 +267,33 @@ package ast {
       case _ => None
 
 
+    def apply(source: String): Either[SigiParseError, KExpr] = apply(source, expr)
+
+    def apply[T](source: String, parser: Parser[T]): Either[SigiParseError, T] = {
+      val reader = new KTokenScanner(source)
+      parser(reader) match {
+        case NoSuccess(msg, input) => Left(SigiParseError(msg, input.pos))
+        case Success(result, input) =>
+          if (input.atEnd) Right(result)
+          else Left(SigiParseError(s"Unparsed tokens: ${source.substring(math.max(0, input.pos.column - 1))}", input.pos))
+      }
+    }
+
     def parseExpr(code: String): Either[SigiCompilationError, KExpr] = {
-      SigiParser(code, expr).flatMap(e => validate(e).toLeft(e))
+      this (code, expr).flatMap(e => validate(e).toLeft(e))
     }
 
     def parseStmt(code: String): Either[SigiCompilationError, KStatement] = {
-      SigiParser(code, statementList).flatMap(e => validate(e).toLeft(e))
+      this (code, statementList).flatMap(e => validate(e).toLeft(e))
     }
 
     def parseFile(fileContents: String): Either[SigiCompilationError, KFile] = {
-      SigiParser(fileContents, file).flatMap(file => {
+      this (fileContents, file).flatMap(file => {
         val errors = validate(file)
         if errors.isEmpty
         then Right(file)
         else Left(SigiCompilationError.allOf(errors))
       })
     }
-
-
   }
-
-
 }

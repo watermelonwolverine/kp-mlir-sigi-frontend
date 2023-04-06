@@ -1,5 +1,5 @@
 module {
-    func.func private @"show"(!sigi.stack) -> !sigi.stack
+    func.func private @"sigi::show"(!sigi.stack) -> !sigi.stack
     // fib_naive: int -> int
     func.func @fib_naive(%s0: !sigi.stack) -> !sigi.stack {
         // -> n;
@@ -54,7 +54,7 @@ module {
           scf.yield %v21: !closure.box<(!sigi.stack) -> !sigi.stack>
         }
         %s30 = sigi.push %s29, %v24: !closure.box<(!sigi.stack) -> !sigi.stack>
-        // apply intrinsic
+        // apply (-> int) -> int
         %s31, %v25 = sigi.pop %s30: !closure.box<(!sigi.stack) -> !sigi.stack>
         %s32 = closure.call %v25 (%s31) : !closure.box<(!sigi.stack) -> !sigi.stack>
         return %s32: !sigi.stack
@@ -131,7 +131,7 @@ module {
               scf.yield %v31: !closure.box<(!sigi.stack) -> !sigi.stack>
             }
             %s38 = sigi.push %s37, %v34: !closure.box<(!sigi.stack) -> !sigi.stack>
-            // apply intrinsic
+            // apply (-> int) -> int
             %s39, %v35 = sigi.pop %s38: !closure.box<(!sigi.stack) -> !sigi.stack>
             %s40 = closure.call %v35 (%s39) : !closure.box<(!sigi.stack) -> !sigi.stack>
             closure.return %s40: !sigi.stack
@@ -146,7 +146,7 @@ module {
           scf.yield %v36: !closure.box<(!sigi.stack) -> !sigi.stack>
         }
         %s45 = sigi.push %s44, %v39: !closure.box<(!sigi.stack) -> !sigi.stack>
-        // apply intrinsic
+        // apply (-> int) -> int
         %s46, %v40 = sigi.pop %s45: !closure.box<(!sigi.stack) -> !sigi.stack>
         %s47 = closure.call %v40 (%s46) : !closure.box<(!sigi.stack) -> !sigi.stack>
         return %s47: !sigi.stack
@@ -164,7 +164,7 @@ module {
         %s6, %v4 = sigi.pop %s5: i32
         %v5 = arith.cmpi "eq", %v3, %v4: i32
         %s7 = sigi.push %s6, %v5: i1
-        %s8 = func.call @show(%s7) : (!sigi.stack) -> !sigi.stack // bool ->
+        %s8 = func.call @"sigi::show"(%s7) : (!sigi.stack) -> !sigi.stack // bool ->
         return %s8: !sigi.stack
     }
 }

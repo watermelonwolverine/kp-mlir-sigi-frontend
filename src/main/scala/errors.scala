@@ -29,8 +29,6 @@ object SigiParseError {
   )
 }
 
-case class SigiLexerError(msg: String) extends SigiCompilationError
-
 
 class SigiTypeError(msg: String) extends SigiCompilationError {
 

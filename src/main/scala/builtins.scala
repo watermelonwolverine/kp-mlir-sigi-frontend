@@ -34,12 +34,12 @@ package builtins {
     evaluationStrategy: ReplEvalFunction,
     compilationStrategy: BuiltinCompilationStrategy
   ) {
-    val internalName: String = s"sigi::$surfaceName"
+    val id: BuiltinFuncId = BuiltinFuncId(surfaceName)
 
     def asValue: VFun = VFun(Some(surfaceName), stackType, evaluationStrategy)
   }
 
-  private def genericCmpOp(name: String, negated: Boolean): (String, BuiltinFunSpec) = {
+  private def genericCmpOp(name: String, negated: Boolean): BuiltinFunSpec = {
     stackFun(name, StackType.generic1(tv => StackType(consumes = List(tv, tv), produces = List(KBool)))) {
       case b :: a :: tail =>
         val eq = a == b
@@ -47,7 +47,7 @@ package builtins {
     }
   }
 
-  private def cmpOp(name: String, definition: (Int, Int) => Boolean): (String, BuiltinFunSpec) = {
+  private def cmpOp(name: String, definition: (Int, Int) => Boolean): BuiltinFunSpec = {
     stackFun(name, StackType(consumes = List(KInt, KInt), produces = List(KBool))) {
       case VNum(b) :: VNum(a) :: tail =>
         val res = definition(a, b)
@@ -56,14 +56,14 @@ package builtins {
   }
 
 
-  private def boolUnaryOp(name: String, definition: (Boolean) => Boolean): (String, BuiltinFunSpec) = {
+  private def boolUnaryOp(name: String, definition: (Boolean) => Boolean): BuiltinFunSpec = {
     stackFun(name, types.unaryOpType(KBool)) {
       case VBool(a) :: tail =>
         val res = definition(a)
         Right(VBool(res) :: tail)
     }
   }
-  private def boolOp(name: String, definition: (Boolean, Boolean) => Boolean): (String, BuiltinFunSpec) = {
+  private def boolOp(name: String, definition: (Boolean, Boolean) => Boolean): BuiltinFunSpec = {
     stackFun(name, types.binOpType(KBool)) {
       case VBool(b) :: VBool(a) :: tail =>
         val res = definition(a, b)
@@ -71,7 +71,7 @@ package builtins {
     }
   }
 
-  private def binOp(name: String, definition: (Int, Int) => Int): (String, BuiltinFunSpec) = {
+  private def binOp(name: String, definition: (Int, Int) => Int): BuiltinFunSpec = {
     stackFun(name, types.binOpType(KInt)) {
       case VNum(b) :: VNum(a) :: tail =>
         val res = definition(a, b)
@@ -79,7 +79,7 @@ package builtins {
     }
   }
 
-  private def unaryOp(name: String, definition: Int => Int): (String, BuiltinFunSpec) = {
+  private def unaryOp(name: String, definition: Int => Int): BuiltinFunSpec = {
     stackFun(name, types.unaryOpType(KInt)) {
       case VNum(a) :: tail =>
         val res = definition(a)
@@ -88,8 +88,8 @@ package builtins {
   }
 
   private def fun(name: String, stackType: StackType, comp: BuiltinCompilationStrategy = FrontendIntrinsic)
-                 (definition: StackType => Env => EvalResult): (String, BuiltinFunSpec) = {
-    name -> BuiltinFunSpec(
+                 (definition: StackType => Env => EvalResult): BuiltinFunSpec = {
+    BuiltinFunSpec(
       surfaceName = name,
       stackType = stackType,
       evaluationStrategy = definition(stackType),
@@ -98,7 +98,7 @@ package builtins {
   }
 
   private def stackFun(name: String, stackType: StackType, compilationStrategy: BuiltinCompilationStrategy = FrontendIntrinsic)
-                      (definition: PartialFunction[List[KValue], Either[SigiEvalError, List[KValue]]]): (String, BuiltinFunSpec) = {
+                      (definition: PartialFunction[List[KValue], Either[SigiEvalError, List[KValue]]]): BuiltinFunSpec = {
     fun(name, stackType, compilationStrategy) { ty =>
       env =>
         definition.applyOrElse(env.stack, _ => Left(SigiEvalError.stackTypeError(ty, env)))
@@ -106,10 +106,8 @@ package builtins {
     }
   }
 
-  val ReplBuiltinSpecs: Map[String, BuiltinFunSpec] =
-    Map(
-
-
+  val ReplBuiltinSpecs: Set[BuiltinFunSpec] =
+    Set(
       fun("env", StackType()) { _ =>
         env =>
           println(s"stack (top is right): ${env.stackToString}")
@@ -123,7 +121,7 @@ package builtins {
       }
       )
 
-  val BuiltinSpecs: Map[String, BuiltinFunSpec] = {
+  val BuiltinSpecs: Set[BuiltinFunSpec] = {
     // this is a forward declaration, the dialect should do something with it.
     val mlirFwdDeclaration = MlirDefinition(name => s"func.func private @\"$name\"(!sigi.stack) -> !sigi.stack")
 
@@ -162,7 +160,7 @@ package builtins {
           case _ => Left(SigiEvalError.stackTypeError(t, env))
     }
 
-    Map(
+    Set(
       // These operators need to be there because the parser refers to them.
       // Those bindings cannot be shadowed because they are not valid identifiers.
       binOp("+", _ + _),
@@ -208,10 +206,11 @@ package builtins {
         case stack@(hd :: _) =>
           println(s"$hd")
           Right(stack)
-      })
+      }
+      )
   }
 
-  val PredefinedSymbols: Map[String, KValue] = BuiltinSpecs.map(s => s._1 -> s._2.asValue)
-  val ReplBuiltins: Map[String, KValue] = ReplBuiltinSpecs.map(s => s._1 -> s._2.asValue)
+  val PredefinedSymbols: Map[String, KValue] = BuiltinSpecs.map(s => s.surfaceName -> s.asValue).toMap
+  val ReplBuiltins: Map[String, KValue] = ReplBuiltinSpecs.map(s => s.surfaceName -> s.asValue).toMap
 
 }

@@ -15,7 +15,7 @@ class TypeInfSpec extends AnyFunSuite {
     test(s"$term should have type $ty") {
 
       val result: Either[SigiError, StackType] = for {
-        parsed <- ast.SigiParser.parseExpr(term)
+        parsed <- new ast.SigiParser().parseExpr(term)
         typed <- types.assignType(Env.Default.toTypingScope)(parsed)
       } yield typed.stackTy
 

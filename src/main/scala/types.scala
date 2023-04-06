@@ -22,13 +22,13 @@ package types {
   /** Typed tree. */
   sealed trait TypedTree extends Positional
   sealed trait TypedStmt extends TypedTree
-  case class TFunDef(name: String, ty: StackType, body: TypedExpr) extends TypedStmt
+  case class TFunDef(id: FuncId, ty: StackType, body: TypedExpr) extends TypedStmt
   case class TExprStmt(e: TypedExpr) extends TypedStmt
   case class TBlock(stmts: List[TypedStmt]) extends TypedStmt
   case class TModule(
-                      functions: Map[String, TFunDef],
-                      mainExpr: TypedExpr
-                    )
+    functions: Map[FuncId, TFunDef],
+    mainExpr: TypedExpr
+  )
 
   sealed trait TypedExpr extends TypedTree {
     def stackTy: StackType
@@ -37,9 +37,9 @@ package types {
       val res = this match
         case TChain(_, a, b) => Chain(a.erase, b.erase)
         case TPushList(_, items) => PushList(items.map(_.erase))
-        case TFunApply(_, name) => FunApply(name)
+        case TFunApply(_, name) => FunApply(name.sourceName)
         case TPushQuote(term) => Quote(term.erase)
-        case TNameTopN(_, names) => NameTopN(names)
+        case TNameTopN(_, names) => NameTopN(names.map(_.sourceName))
         case TPushPrim(ty, value) => PushPrim(ty, value)
         case TEvalBarrier(te) => OpaqueExpr(te)
       res.setPos(this.pos)
@@ -63,9 +63,9 @@ package types {
       case TPushList(ty, items) => items.mkString("[", ", ", s"] : $ty")
       case TPushPrim(KString, value) => s"\"$value\""
       case TPushPrim(_, value) => value.toString
-      case TFunApply(stackTy, name) => s"($name : $stackTy)"
+      case TFunApply(stackTy, id) => s"(${id.sourceName} : $stackTy)"
       case t@TPushQuote(term) => s"({$term} : ${t.stackTy})"
-      case TNameTopN(stackTy, names) => names.zip(stackTy.consumes).map((s, dt) => s"$s: $dt").mkString("-> ", ", ", ";")
+      case TNameTopN(stackTy, ids) => ids.map(_.sourceName).zip(stackTy.consumes).map((s, dt) => s"$s: $dt").mkString("-> ", ", ", ";")
       case TEvalBarrier(te) => te.toString
   }
 
@@ -83,12 +83,13 @@ package types {
     override def stackTy: StackType = StackType.pushOne(ty)
   }
 
-  case class TFunApply(override val stackTy: StackType, name: String) extends TypedExpr
+  case class TFunApply(override val stackTy: StackType, binding: FuncId) extends TypedExpr
 
   case class TPushQuote(term: TypedExpr) extends TypedExpr {
     override def stackTy: StackType = StackType.pushOne(KFun(term.stackTy))
   }
-  case class TNameTopN(override val stackTy: StackType, names: List[String]) extends TypedExpr
+
+  case class TNameTopN(override val stackTy: StackType, names: List[StackValueId]) extends TypedExpr
 
   /** Supertrait for KDataType and KRow[I]Var. */
   sealed trait KStackTypeItem {
@@ -453,18 +454,21 @@ package types {
           case _ => Some(SigiTypeError.mismatch(a, b))
   }
 
-  type BindingTypes = Map[String, KDataType]
+  case class VarBinding(funcId: FuncId, ty: KDataType)
+
+  type BindingTypes = Map[String, VarBinding]
+
   class TypingScope private(private[types] val bindings: BindingTypes,
                             private val typesInScope: Map[String, datamodel.TypeDescriptor],
                             private[types] val ctx: TypingCtx) {
 
 
-    def addBindings(names: IterableOnce[(String, KDataType)]): TypingScope =
+    def addBindings(newBindings: IterableOnce[VarBinding]): TypingScope =
       new TypingScope(
-        bindings = this.bindings ++ names,
+        bindings = this.bindings ++ newBindings.iterator.map(binding => binding.funcId.sourceName -> binding),
         typesInScope = this.typesInScope,
         ctx = this.ctx
-      )
+        )
 
     def addTypeInScope(moreTypes: IterableOnce[(String, datamodel.TypeDescriptor)]): TypingScope =
       new TypingScope(
@@ -473,7 +477,7 @@ package types {
         ctx = this.ctx
       )
 
-    def typeOf(termName: String): Either[SigiTypeError, KDataType] =
+    def getBinding(termName: String): Either[SigiTypeError, VarBinding] =
       bindings.get(termName).toRight(SigiTypeError.undef(termName))
 
     def resolveType(typeName: String): Either[SigiTypeError, datamodel.TypeDescriptor] =
@@ -507,8 +511,8 @@ package types {
   def typeFile(env: TypingScope)(file: KFile): Either[SigiTypeError, TModule] = {
     doValidation(env)(KBlock(file.funs)).flatMap {
       case TBlock(funs) =>
-        val typedFuns: Map[String, TFunDef] = funs.collect { case fun@TFunDef(name, _, _) => (name, fun) }.toMap
-        val fileEnv = env.addBindings(typedFuns.map { case (name, fun) => (name, KFun(fun.ty)) })
+        val typedFuns: Map[FuncId, TFunDef] = funs.collect { case fun@TFunDef(id, _, _) => (id, fun) }.toMap
+        val fileEnv = env.addBindings(typedFuns.map { case (id, fun) => VarBinding(id, KFun(fun.ty)) })
         doValidation(fileEnv)(KExprStatement(file.mainExpr))
           .flatMap { case TExprStmt(te) => checkMainExprType(te).toLeft(te) }
           .map(te => TModule(functions = typedFuns, mainExpr = te))
@@ -520,18 +524,18 @@ package types {
       case KBlock(stmts) =>
 
         val fileEnv = stmts.collect {
-          case KFunDef(name, ty, _) => resolveFunType(env)(ty).map((name, _))
-        }.flattenList.map(_.toMap).map(env.addBindings)
+          case KFunDef(id, ty, _) => resolveFunType(env)(ty).map(VarBinding(id, _))
+        }.flattenList.map(env.addBindings)
 
         fileEnv.flatMap(env => stmts.map(doValidation(env)).flattenList.map(TBlock.apply).map(_.setPos(ast.pos)))
 
       case KExprStatement(e) => types.assignType(env)(e).map(TExprStmt.apply).map(_.setPos(ast.pos))
-      case KFunDef(name, ty, body) =>
+      case KFunDef(id, ty, body) =>
         for {
           // todo should unify the type of the body and the type of the signature
           funTy <- types.resolveFunType(env)(ty)
-          typedBody <- types.assignType(env.addBindings(List(name -> funTy)))(body)
-        } yield TFunDef(name, funTy.stack, typedBody).setPos(ast.pos)
+          typedBody <- types.assignType(env.addBindings(List(VarBinding(id, funTy))))(body)
+        } yield TFunDef(id, funTy.stack, typedBody).setPos(ast.pos)
   }
 
   def checkMainExprType(term: TypedExpr): Option[SigiTypeError] =
@@ -608,26 +612,27 @@ package types {
 
     case Quote(term) => assignTypeRec(scope)(term).map(t => (TPushQuote(t._1).setPos(node.pos), scope))
     case NameTopN(names) =>
-      // this is the most generic type for this construct: every name has a different tvar
-      val genericTy = StackType.generic(newTVar => {
-        StackType(consumes = names.map(_ => newTVar()))
-      })
-      // turn tvars into ivars
-      val withIvars = scope.ctx.mapToIvars(genericTy)
-      val ivars = withIvars.consumes.asInstanceOf[List[KInferenceVar]]
+      val typeVarGen = KTypeVar.typeVarGenerator()
+      val newBindings = names.map { name =>
+        val pos = FilePos(position = node.pos, fileName = "") // TODO filename
+        VarBinding(new StackValueId(name, pos), KInferenceVar(typeVarGen()))
+      }
+
+      // this is the most generic type for this construct: every name has a different ivar
+      val withIvars = StackType(consumes = newBindings.map(_.ty))
       // make bindings whose types are the ivars
-      val newEnv = scope.addBindings(names.zip(ivars).toMap)
-      Right((TNameTopN(withIvars, names).setPos(node.pos), newEnv))
+      val newEnv = scope.addBindings(newBindings)
+      Right((TNameTopN(withIvars, newBindings.map(_.funcId).asInstanceOf[List[StackValueId]]).setPos(node.pos), newEnv))
 
     case FunApply(name) =>
       @tailrec
-      def typeFunApply(funT: KDataType): TFunApply = funT match
-        case KFun(stackTy) => TFunApply(stackTy, name)
+      def typeFunApply(funT: VarBinding): TFunApply = funT.ty match
+        case KFun(stackTy) => TFunApply(stackTy, funT.funcId)
         // if the function is itself in inference, we need to resolve it
-        case ivar: KInferenceVar if ivar.instantiation != null => typeFunApply(ivar.instantiation)
-        case t => TFunApply(StackType.pushOne(t), name)
+        case ivar: KInferenceVar if ivar.instantiation != null => typeFunApply(VarBinding(funT.funcId, ivar.instantiation))
+        case t => TFunApply(StackType.pushOne(t), funT.funcId)
 
-      scope.typeOf(name) match
+      scope.getBinding(name) match
         case Left(err) => Left(err.setPos(node.pos))
         case Right(ty) => Right((typeFunApply(ty).setPos(node.pos), scope))
 

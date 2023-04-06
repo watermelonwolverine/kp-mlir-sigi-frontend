@@ -14,7 +14,7 @@ class EvalSpec extends AnyFunSuite {
 
       val env = Env.Default
       val result: Either[SigiError, Env] = for {
-        parsed <- ast.SigiParser.parseExpr(term)
+        parsed <- new ast.SigiParser().parseExpr(term)
         typed <- types.assignType(env.toTypingScope)(parsed)
         env <- repl.eval(typed)(env)
       } yield env

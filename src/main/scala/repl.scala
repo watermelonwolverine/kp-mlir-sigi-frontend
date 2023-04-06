@@ -8,6 +8,9 @@ package repl {
   import types.*
   import types.StackType.canonicalize
 
+  import de.cfaed.sigi.builtins
+  import de.cfaed.sigi.builtins.BuiltinFunSpec
+
   import scala.annotation.tailrec
 
 
@@ -41,7 +44,7 @@ package repl {
       if (line == "exit" || line == ":wq" || line == ":q" || line == "/exit") return
 
       val result: Either[SigiError, (Env, TypedStmt)] = for {
-        parsed <- SigiParser.parseStmt(line)
+        parsed <- new SigiParser(fileName = "repl").parseStmt(line)
         chained = chainWithLastExpr(parsed, lastExpr)
         typed <- doValidation(env.toTypingScope)(chained)
         env2 <- eval(typed)(env)
@@ -62,9 +65,7 @@ package repl {
     }
 
     print("> ")
-    doRepl(scanner.readLine(),
-           env = Env.Default.copy(vars = Env.Default.vars ++ builtins.ReplBuiltins),
-           lastExpr = None)
+    doRepl(scanner.readLine(), env = Env.DefaultReplEnv, lastExpr = None)
   }
 
 
@@ -108,24 +109,36 @@ package repl {
   case class VList(ty: types.KList, items: List[KValue]) extends KValue
 
 
-  case class Env(vars: Map[String, KValue],
+  case class Env(vars: Map[FuncId, KValue],
                  stack: List[KValue],
                  typesInScope: Map[String, datamodel.TypeDescriptor]) {
-    def apply(name: String): Either[SigiEvalError, KValue] = vars.get(name).toRight(SigiEvalError.undef(name))
+
+    def apply(id: FuncId): Either[SigiEvalError, KValue] = vars.get(id).toRight(SigiEvalError.undef(id.sourceName))
 
     def push(v: KValue): Env = Env(vars, v :: stack, typesInScope)
 
     def stackToString: String = stack.reverse.mkString("[", ", ", "]")
-    def varsToString: String = (vars -- Env.Default.vars.keys).map { case (k, v) => s"$k: $v" }.mkString("{", ", ", "}")
-    private def bindingTypes: types.BindingTypes = vars.map((k, v) => (k, v.dataType))
+
+    def varsToString: String = (vars -- Env.Default.vars.keys).map { case (k, v) => s"${k.sourceName}: $v" }.mkString("{", ", ", "}")
+
+    private def bindingTypes: types.BindingTypes = vars.map((k: FuncId, v) => (k.sourceName, VarBinding(k, v.dataType)))
 
     export typesInScope.get as getType
-    
+
     def toTypingScope: TypingScope = TypingScope(bindingTypes, typesInScope)
   }
 
   object Env {
-    val Default: Env = Env(builtins.PredefinedSymbols, Nil, TypeDescriptor.Predefined)
+    def defaultEnv(builtins: IterableOnce[BuiltinFunSpec]) =
+      new Env(
+        builtins.map(spec => spec.id -> spec.asValue).toMap,
+        Nil,
+        TypeDescriptor.Predefined
+        )
+
+    val Default: Env = defaultEnv(builtins.BuiltinSpecs)
+    val DefaultReplEnv: Env = defaultEnv(builtins.BuiltinSpecs ++ builtins.ReplBuiltinSpecs)
+    ,
   }
 
   def applyValue(env: Env)(value: KValue): EvalResult =
@@ -148,9 +161,9 @@ package repl {
       stmts.foldLeft[EvalResult](Right(env)) { (env, newStmt) =>
         env.flatMap(eval(newStmt))
       }
-    case TFunDef(name, ty, body) =>
+    case TFunDef(id, ty, body) =>
       Right(
-        env.copy(vars = env.vars.updated(name, VFun(Some(name), ty, eval(body))))
+        env.copy(vars = env.vars.updated(id, VFun(Some(id.sourceName), ty, eval(body))))
       )
     case TExprStmt(e) => eval(e)(env)
 
@@ -166,7 +179,7 @@ package repl {
           val (listItems, stackRest) = env.stack.splitAt(newItems)
           Right(env.copy(stack = VList(ty, listItems.reverse) :: stackRest))
       })
-    case TFunApply(_, name) => env(name).flatMap(applyValue(env))
+    case TFunApply(_, id) => env(id).flatMap(applyValue(env))
     case TChain(_, a, b) => eval(a)(env).flatMap(e2 => eval(b)(e2))
     case TEvalBarrier(_) => Right(env) // do nothing, already evaluated
     case TPushQuote(e) => Right(env.push(VFun(Some("(quote)"), e.stackTy, eval(e))))

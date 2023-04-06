@@ -19,13 +19,13 @@ class ParserSpec extends AnyFunSuite with Matchers {
 
   inline def checkExpr(term: String, tree: KExpr): Unit = {
     test(term) {
-      assertResult(Right(tree))(ast.SigiParser.parseExpr(term))
+      assertResult(Right(tree))(new ast.SigiParser().parseExpr(term))
     }
   }
 
   inline def checkTreeMatches(term: String)(tree: PartialFunction[KStatement, Unit]): Unit = {
     test(term) {
-      val parsed = ast.SigiParser.parseStmt(term)
+      val parsed = new ast.SigiParser().parseStmt(term)
       inside(parsed) {
         case Right(ast) => tree(ast)
       }
@@ -80,20 +80,20 @@ class ParserSpec extends AnyFunSuite with Matchers {
 
   checkExpr("-> x, y; x * y", names("x", "y") ~ (app("x") ~ app("y") ~ app("*")))
   checkTreeMatches("let double: int-> int = ->x; 2*x;;") {
-    case KFunDef("double", AFunType(List(_), List(_)), _) =>
+    case KFunDef(FuncId("double", _), AFunType(List(_), List(_)), _) =>
   }
 
   checkTreeMatches("let id: 'a -> 'a = ->x; x;;") {
-    case KFunDef("id", AFunType(List(ATypeVar("'a")), List(ATypeVar("'a"))), _) =>
+    case KFunDef(FuncId("id", _), AFunType(List(ATypeVar("'a")), List(ATypeVar("'a"))), _) =>
   }
 
 
   checkTreeMatches("let id: 'a list -> 'b list = pop [];;") {
-    case KFunDef("id", AFunType(List(ATypeCtor("list", List(ATypeVar("'a")))), _), _) =>
+    case KFunDef(_, AFunType(List(ATypeCtor("list", List(ATypeVar("'a")))), _), _) =>
   }
 
   checkTreeMatches("let map: 'a list, ('a -> 'b) -> 'b list = pop pop [];;") {
-    case KFunDef("map", AFunType(
+    case KFunDef(_, AFunType(
     List(
     ATypeCtor("list", List(ATypeVar("'a"))),
     AFunType(List(ATypeVar("'a")), List(ATypeVar("'b")))
@@ -102,7 +102,7 @@ class ParserSpec extends AnyFunSuite with Matchers {
   }
 
   checkTreeMatches("let id: 'S, 'a -> 'S, 'a = ->x; x;;") {
-    case KFunDef("id", funT@AFunType(List(ARowVar("'S"), ATypeVar("'a")), List(ARowVar("'S"), ATypeVar("'a"))), _) =>
+    case KFunDef(_, funT@AFunType(List(ARowVar("'S"), ATypeVar("'a")), List(ARowVar("'S"), ATypeVar("'a"))), _) =>
       val resolved = types.resolveFunType(Env.Default.toTypingScope)(funT)
       val expected = KFun(StackType.generic1(StackType.symmetric1))
       assertResult(Right(expected.toString))(resolved.map(_.toString))
