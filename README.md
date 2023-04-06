@@ -36,4 +36,3 @@ After running `just b`, the following commands are available:
   - `sigi-to-mlir -` takes input from standard input
   - `sigi-to-mlir fileName.sigi` takes input from a file
   - `just exprToMlir "sigi code"`: convenience wrapper to compile a single Sigi expression
-
