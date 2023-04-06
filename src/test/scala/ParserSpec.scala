@@ -27,7 +27,7 @@ class ParserSpec extends AnyFunSuite with Matchers {
     test(term) {
       val parsed = new ast.SigiParser().parseStmt(term)
       inside(parsed) {
-        case Right(ast) => tree(ast)
+        case Right(ast) if tree.isDefinedAt(ast) => ()
       }
     }
   }

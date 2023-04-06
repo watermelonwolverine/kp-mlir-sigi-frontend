@@ -190,7 +190,8 @@ package types {
   case object KString extends KPrimitive[String]
 
   /** An unapplied function type. */
-  case class KFun(stack: StackType) extends KDataType
+  case class KFun(stackTy: StackType) extends KDataType
+
   case class KList(item: KDataType) extends KDataType
 
 
@@ -380,10 +381,14 @@ package types {
     // only replace vars that have an instantiation
     def partialGround: TySubst = groundSubst(eliminateIvars = false)
 
+
+    def unifyWithoutIvarConversion(a: StackType, b: StackType): Option[SigiTypeError] =
+      unify(a.produces, b.produces).orElse(unify(a.consumes, b.consumes))
+
     def unify(a: StackType, b: StackType): Option[SigiTypeError] =
       val ac = mapToIvars(a.canonicalize)
       val bc = mapToIvars(b.canonicalize)
-      unify(ac.produces, bc.produces).orElse(unify(ac.consumes, bc.consumes))
+      unifyWithoutIvarConversion(ac, bc)
 
     /**
       * Unify both lists of types. This adds constraints on the inference variables to make them
@@ -425,6 +430,7 @@ package types {
           case (List(rv: KRowIVar), lst) => unifyRIvar(rv, lst.reverse)
           case (lst, List(rv: KRowIVar)) => unifyRIvar(rv, lst.reverse)
           case (Nil, Nil) => None
+          case (hd1 :: tl1, hd2 :: tl2) if hd1 == hd2 => unifyImpl(tl1, tl2)
           case _ => Some(SigiTypeError.cannotUnify(aReversed.reverse, bReversed.reverse))
       }
 
@@ -519,6 +525,11 @@ package types {
     }
   }
 
+  def checkMainExprType(term: TypedExpr): Option[SigiTypeError] =
+    if term.stackTy.simplify.consumes.nonEmpty
+    then Some(SigiTypeError.mainExprConsumesElements(term.stackTy).setPos(term.pos))
+    else None
+
   def doValidation(env: TypingScope)(ast: KStatement): Either[SigiTypeError, TypedStmt] = {
     ast match
       case KBlock(stmts) =>
@@ -530,23 +541,29 @@ package types {
         fileEnv.flatMap(env => stmts.map(doValidation(env)).flattenList.map(TBlock.apply).map(_.setPos(ast.pos)))
 
       case KExprStatement(e) => types.assignType(env)(e).map(TExprStmt.apply).map(_.setPos(ast.pos))
-      case KFunDef(id, ty, body) =>
+      case f@KFunDef(id, ty, body) =>
         for {
-          // todo should unify the type of the body and the type of the signature
           funTy <- types.resolveFunType(env)(ty)
           typedBody <- types.assignType(env.addBindings(List(VarBinding(id, funTy))))(body)
-        } yield TFunDef(id, funTy.stack, typedBody).setPos(ast.pos)
+          _ <- types.checkCompatible(typedBody.stackTy, funTy.stackTy)
+            .map(SigiTypeError.bodyTypeIsNotCompatibleWithSignature(typedBody.stackTy, funTy.stackTy, id.sourceName).setPos(f.pos).addCause)
+            .toLeft(())
+        } yield TFunDef(id, funTy.stackTy, typedBody).setPos(ast.pos)
   }
 
-  def checkMainExprType(term: TypedExpr): Option[SigiTypeError] =
-    if term.stackTy.simplify.consumes.nonEmpty
-    then Some(SigiTypeError.mainExprConsumesElements(term.stackTy).setPos(term.pos))
-    else None
-
-  def checkTypeConforms(expectedTy: StackType)(term: TypedExpr): Option[SigiTypeError] =
-    if term.stackTy != expectedTy // todo both types should be unifiable, not equal
-    then Some(SigiTypeError.mismatch(term.stackTy, expectedTy).setPos(term.pos))
-    else None
+  /** Check that the given type is compatible with the bound.
+    * This means that the type is at least as general as the bound.
+    * This represents a subtyping relation between function types.
+    *
+    * To check this, the bound is treated as a ground type (its
+    * type variables are treated as types, not variables). A round
+    * of type inference then checks that there exists an instantiation
+    * of the first type that is compatible with the bound.
+    */
+  def checkCompatible(ty: StackType, bound: StackType): Option[SigiTypeError] =
+    val ctx = new TypingCtx()
+    val tyAsIvars = ctx.mapToIvars(ty.canonicalize).pp("to ivars")
+    ctx.unifyWithoutIvarConversion(tyAsIvars, bound.canonicalize)
 
   def resolveType(env: TypingScope)(t: AstType): Either[SigiTypeError, KStackTypeItem] = t match
     case ATypeCtor(name, tyargs) => env.resolveType(name).flatMap {

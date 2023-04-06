@@ -4,7 +4,9 @@ import scala.collection.mutable.ListBuffer
 
 extension[A] (self: A)
   def pp(hint: String = ""): A = {
-    println(hint + self.toString)
+    val prefix = if hint.nonEmpty then s"$hint: " else ""
+    val selfToStr = if self == null then "null" else self.toString
+    println(prefix + selfToStr)
     self
   }
 

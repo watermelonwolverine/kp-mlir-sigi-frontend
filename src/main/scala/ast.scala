@@ -10,7 +10,7 @@ package ast {
   import scala.util.parsing.combinator.{PackratParsers, Parsers, RegexParsers}
   import scala.util.parsing.input.{NoPosition, Position, Positional, Reader}
   import tokens.*
-  import types.{KDataType, KFun, KPrimitive, StackType, TypedExpr}
+  import types.{KDataType, KFun, KPrimitive, StackType, TypedExpr, TypingScope}
 
   import de.cfaed.sigi.tokens
 
@@ -281,6 +281,14 @@ package ast {
 
     def parseExpr(code: String): Either[SigiCompilationError, KExpr] = {
       this (code, expr).flatMap(e => validate(e).toLeft(e))
+    }
+
+    def parseFunType(code: String): Either[SigiCompilationError, AFunType] = {
+      this (code, funTy)
+    }
+
+    def parseAndResolveFunType(scope:TypingScope)(code: String): Either[SigiCompilationError, StackType] = {
+      parseFunType(code).flatMap(types.resolveFunType(scope)).map(_.stackTy)
     }
 
     def parseStmt(code: String): Either[SigiCompilationError, KStatement] = {

@@ -3,6 +3,7 @@ package de.cfaed.sigi
 import repl.Env
 import types.*
 
+import org.scalatest.Inside.inside
 
 import org.scalatest.funsuite.AnyFunSuite
 
@@ -10,6 +11,7 @@ import org.scalatest.funsuite.AnyFunSuite
   * @author Clément Fournier &lt;clement.fournier@tu-dresden.de&gt;
   */
 class TypeInfSpec extends AnyFunSuite {
+
 
   inline def checkType(term: String, ty: String): Unit = {
     test(s"$term should have type $ty") {
@@ -76,5 +78,36 @@ class TypeInfSpec extends AnyFunSuite {
   // (it's not well formed). The well formed term:
   // (1 2 true if { -> x, y; x } else {-> x, y ; y}) apply
   // types correctly.
+
+
+  inline def compatibilityCheck(descr: String, expected: PartialFunction[Either[SigiCompilationError, Unit], Unit])
+                               (ty: String, sig: String): Unit = {
+    test(s"Type $ty should be $descr with signature type $sig") {
+
+      val parser = new ast.SigiParser()
+      val parseResolve = parser.parseAndResolveFunType(Env.Default.toTypingScope)
+      val result = for {
+        tyParsed <- parseResolve(ty)
+        sigParsed <- parseResolve(sig)
+        _ <- types.checkCompatible(tyParsed, sigParsed).toLeft(())
+      } yield ()
+
+      inside(result)(expected)
+    }
+  }
+
+
+  inline def checkTypesNotCompatible(ty: String, sig: String)(errorMatcher: PartialFunction[SigiError, Unit] = { case _ => () }): Unit =
+    compatibilityCheck("NOT compatible", { case Left(err) if errorMatcher.isDefinedAt(err) => () })(ty, sig)
+
+  inline def checkTypesCompatible(ty: String, sig: String): Unit =
+    compatibilityCheck("compatible", { case Right(()) => () })(ty, sig)
+
+
+  checkTypesCompatible("int -> int", "int -> int")
+  checkTypesCompatible("'a, 'b -> 'b", "'a, 'a -> 'a")
+
+  checkTypesNotCompatible("'a, 'a -> 'a", "'a, 'b -> 'b")()
+  checkTypesNotCompatible("int -> int", "-> int")()
 
 }
