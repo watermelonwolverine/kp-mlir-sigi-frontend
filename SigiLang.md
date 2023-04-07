@@ -50,11 +50,14 @@ Additional expression forms:
   - `1 + 2 * 3` is the same as `1 2 3 (*) (+)`
 - if/elif/else are used to build conditionals. For instance `if (a) b else c` is mapped to `a { b } { c } cond apply`, where `cond` and `apply` are [language builtins](#builtins).
 
-Outside of expressions, is also possible to declare a function with the syntax `"let" id ":" stackTy "=" expr ";;"`.
+Outside of expressions, is also possible to declare a function with the syntax `"let" id (":" stackTy)? "=" expr ";;"`.
 For instance this is the definition of a function that squares its argument:
 ```
 # this is a new function named "square"
 let square: int -> int = dup (*);;
+
+# this is the same, but the type is inferred
+let square = dup (*);;
 ```
 
 
@@ -62,34 +65,34 @@ let square: int -> int = dup (*);;
 
 ### Type system
 
-Sigi is a stack-based language. Function types describe how the stack changes when the function is called.
 
 #### Data types
 
-Data types are the types of runtime values, ie, values that can be placed on the stack. The following grammar shows how data types can be written in source:
-```ebnf
-(* the type of a value on the stack *)
-dty      ::= typector
-           | "(" funty ")" 
-           | tvar (* a type variable, eg 'a, 'b *)
-        
-(* a type constructor, written in postfix syntax, eg `int list` *)
-typector ::= dty* id
-(* a function type. Pops the left list from stack and pushes the right list. *)
-funty    ::= stacklist? "->" stacklist? 
-stacklist::= (dty | rowvar) ("," (dty | rowvar))*
-```
+Data types are the types of runtime values, i.e., values that can be placed on the stack. 
+Data types include:
+- simple types: they are simply the name of a type, eg `int`.
+- parameterized types: the application of a type constructor to type arguments.
+For instance `int list` is the application of the `list` type constructor to the type
+argument `int`. Technically, simple types are parameterized types whose type ctors
+require zero arguments.
+- function types: the type of a function that transforms the top of the stack.
+For instance `int -> str` requires an `int` on the top of the stack and replaces it with an `str`.
+Function types can be understood as [stack types](#stack-types) when the function is applied.
 
-Types can be generic, as can be seen in the `typector` production. Type variables are written like `'a` or `'b`, and type constructors are applied postfix, like in OCaml.
+Additionally, type variables, e.g. `'a` or `'b`, stand for an unknown data type and can occur anywhere a data type is expected.
+Type variables are declared implicitly, and their name is only important within the same type.
+For instance `'a -> 'a` is the type of a function that requires one argument but does not pop it from the stack.
+It is the exact same type as `'b -> 'b`.
 
 #### Stack types
 
-A stack type is written $c_1, \ldots, c_n \to p_1, \ldots, p_m$.  This is the type of a function that pops $n$ arguments from the stack and pushes $m$ results.The $c_i$ and $p_j$ are [[#data types|data types]].
+Stack types are the types of *terms* of the language, i.e., of expressions.
+They describe how the top of the stack changes when the term is evaluated.
+
+A stack type is written $c_1, \ldots, c_n \to p_1, \ldots, p_m$.  This is the type of a function that pops $n$ arguments from the stack and pushes $m$ results. The $c_i$ and $p_j$ are [data types](#data-types) or type variables.
 
 Arguments are popped right-to-left and results are pushed left-to-right (i.e., the top of the stack is always written on the right).
 This convention allows easily seeing how the stack changes when the function is evaluated: here, the $c_1, \ldots, c_n$ (with $c_n$ the top) will be replaced by $p_1, \ldots, p_m$ (with $p_m$ the top).
-
-All terms of the language have a stack type, for instance, the expression `1` has type `-> int`, because the effect of its evaluation is pushing the number 1 on the stack.
 
 #### Subtyping
 
@@ -100,18 +103,32 @@ However, defining a subtyping relation on stack types allows for more flexibilit
 
 This is the classic subtyping rule for function types, whereby subtypes of a function type are the function types of more general functions, and supertypes are more specific.
 The substitution thing has to do with generic functions.
-The type `s = 'a, 'b -> 'a` is more general than `t = 'c, 'c -> 'c`, meaning it should hold that $s <: t$.
+The type $s = {'}a, {'}b -> {'}a$ is more general than $t = {'}c, {'}c -> {'}c$, because $s$ can accept more input types.
+That means it should hold that $s <: t$.
 To show this, we define a substitution $\theta$ that maps both `'a` and `'b` to `'c`.
 It then holds that $\theta s = t$, so $\theta s <: t$ and so $s <: t$.
 
+#### Type inference
 
+Sigi does not usually require any type annotations.
+Type annotations can only be written on explicit function declarations (those that use the `let` keyword).
+They are only required if the function is recursive, or if the function is referred to by other functions declared before it (forward references).
+
+```
+let a = 1;; // a: -> int
+let b = a;; // b: -> int
+let c = d;; // illegal forward reference to d, because d has no type annotation
+let d = d;; // illegal recursive call, because d has no type annotation
+```
+
+Type inference is performed while type-checking expressions as explained in the following section.
 
 ### Typing and evaluation
 
 > - `id` resolves a name in the enclosing scope. Names resolve to a *value*, a value having a data type, not a stack type. 
->   - If `id` refers to a function of type $\mathbf{c}\to\mathbf{p}$, then the expression has that function type. 
->   - If `id` refers to another kind of value of type $t$, then the expression has type $\to t$. 
->   - If `id` does not refer to a name in scope, the expression is not well-typed.
+>   - If `id` refers to a function of type $\mathbf{c}\to\mathbf{p}$, then that function is applied to the stack. The expression has that stack type. 
+>   - If `id` refers to another kind of value of type $t$, then that value is pushed to the stack. The expression has stack type $\to t$. 
+>   - If `id` does not refer to a name in scope, the expression is not well-typed and a compile-time error occurs.
 > - `{ e }` creates a function value whose expansion is the term `e` and pushes it on the stack. If $\mathtt{e}: t$, then $\mathtt{\{\,e\,\}} :\, \to t$.
 > - `-> x1,...,xn;` pops the $n$ values on top of the stack and binds them to names in the enclosing scope. The top of the stack is named $x_n$, the next value is named $x_{n-1}$, etc. The type of this expression is $'a_1, \ldots, 'a_n \to$, where the $'a_i$ are fresh type variables.
 > - `e1 e2` evaluates `e1`, then evaluates `e2`. In more abstract terms, this denotes the *composition* of both stack functions.
