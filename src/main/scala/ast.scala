@@ -58,8 +58,7 @@ package ast {
   }
 
   /** ID of a function that was written in a source file. */
-  class UserFuncId(override val sourceName: String, override val filePos: FilePos) extends EmittableFuncId with PositionedFuncId {
-  }
+  class UserFuncId(override val sourceName: String, override val filePos: FilePos) extends EmittableFuncId with PositionedFuncId
 
   /** ID of a builtin function. This one uses name equality. */
   case class BuiltinFuncId(override val sourceName: String) extends EmittableFuncId {
@@ -79,7 +78,7 @@ package ast {
 
   case class KBlock(stmts: List[KStatement]) extends KStatement
 
-  case class KFunDef(name: FuncId, ty: AFunType, body: KExpr) extends KStatement
+  case class KFunDef(id: UserFuncId, astTy: Option[AFunType], body: KExpr) extends KStatement
 
   case class KExprStatement(e: KExpr) extends KStatement {
     setPos(e.pos)
@@ -137,7 +136,7 @@ package ast {
   class SigiParser(private val fileName: String = "") extends Parsers with PackratParsers {
     override type Elem = KToken
 
-    def nextFunId(id: ID): FuncId = new UserFuncId(id.name, FilePos(id.pos, fileName))
+    def nextFunId(id: ID): UserFuncId = new UserFuncId(id.name, FilePos(id.pos, fileName))
 
 
     private def thunk =
@@ -162,7 +161,7 @@ package ast {
       }
 
     def funDef: Parser[KFunDef] =
-      DEFINE_FUNC ~> id ~ (COLON ~> funTy) ~ (OP("=") ~> expr) <~ PHAT_SEMI ^^ {
+      DEFINE_FUNC ~> id ~ (COLON ~> funTy).? ~ (OP("=") ~> expr) <~ PHAT_SEMI ^^ {
         case id ~ ty ~ body => KFunDef(nextFunId(id), ty, body).setPos(id.pos)
       }
 

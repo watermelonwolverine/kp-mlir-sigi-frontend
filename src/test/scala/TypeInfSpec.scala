@@ -107,6 +107,7 @@ class TypeInfSpec extends AnyFunSuite {
   checkTypesCompatible("int -> int", "int -> int")
   checkTypesCompatible("'a, 'b -> 'b", "'a, 'a -> 'a")
 
+  checkTypesNotCompatible("'a, 'a -> int", "'a, 'a -> 'a")()
   checkTypesNotCompatible("'a, 'a -> 'a", "'a, 'b -> 'b")()
   checkTypesNotCompatible("int -> int", "-> int")()
 

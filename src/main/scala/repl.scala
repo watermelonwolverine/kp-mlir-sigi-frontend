@@ -26,7 +26,7 @@ package repl {
         println(e.stackTy)
         println(s"$consumed -> $produced".trim)
 
-      case TFunDef(name, ty, _) => println(s"Defined function $name: $ty")
+      case TFunDef(id, ty, _) => println(s"Defined function ${id.sourceName}: $ty")
       case TBlock(st) =>
         // this does not really work as the environments are different between each statement.
         // but at the same time the repl never parses a block so it does not matter.

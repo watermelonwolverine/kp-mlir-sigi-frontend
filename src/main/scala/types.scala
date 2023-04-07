@@ -465,13 +465,41 @@ package types {
   type BindingTypes = Map[String, VarBinding]
 
   class TypingScope private(private[types] val bindings: BindingTypes,
+
+                            /** Map of incompletely typed IDs by name. Referencing them causes an error. */
+                            private val incompletelyTypedThings: Map[String, (FuncId, FuncId => SigiTypeError)],
                             private val typesInScope: Map[String, datamodel.TypeDescriptor],
                             private[types] val ctx: TypingCtx) {
 
 
+    def addIncompleteBinding(id: FuncId, errorMaker: FuncId => SigiTypeError): TypingScope =
+      new TypingScope(
+        bindings,
+        incompletelyTypedThings + (id.sourceName -> (id, errorMaker)),
+        typesInScope,
+        ctx
+        )
+
+    def addIncompleteBindings(newItems: IterableOnce[(FuncId, FuncId => SigiTypeError)]): TypingScope =
+      new TypingScope(
+        bindings,
+        incompletelyTypedThings ++ newItems.iterator.map(item => item._1.sourceName -> item),
+        typesInScope,
+        ctx
+        )
+
+    def promoteIncompleteBinding(binding: VarBinding): TypingScope =
+      new TypingScope(
+        bindings = this.bindings + (binding.funcId.sourceName -> binding),
+        incompletelyTypedThings = this.incompletelyTypedThings - binding.funcId.sourceName,
+        typesInScope = this.typesInScope,
+        ctx = this.ctx
+        )
+
     def addBindings(newBindings: IterableOnce[VarBinding]): TypingScope =
       new TypingScope(
         bindings = this.bindings ++ newBindings.iterator.map(binding => binding.funcId.sourceName -> binding),
+        incompletelyTypedThings = this.incompletelyTypedThings,
         typesInScope = this.typesInScope,
         ctx = this.ctx
         )
@@ -479,12 +507,16 @@ package types {
     def addTypeInScope(moreTypes: IterableOnce[(String, datamodel.TypeDescriptor)]): TypingScope =
       new TypingScope(
         bindings = this.bindings,
+        incompletelyTypedThings = this.incompletelyTypedThings,
         typesInScope = this.typesInScope ++ moreTypes,
         ctx = this.ctx
-      )
+        )
 
     def getBinding(termName: String): Either[SigiTypeError, VarBinding] =
-      bindings.get(termName).toRight(SigiTypeError.undef(termName))
+      bindings.get(termName).toRight(
+        incompletelyTypedThings.get(termName).map(t => t._2(t._1))
+          .getOrElse(SigiTypeError.undef(termName))
+        )
 
     def resolveType(typeName: String): Either[SigiTypeError, datamodel.TypeDescriptor] =
       typesInScope.get(typeName).toRight(SigiTypeError.undef(typeName))
@@ -492,7 +524,7 @@ package types {
   }
   object TypingScope {
     def apply(varNs: BindingTypes, typeNs: Map[String, datamodel.TypeDescriptor]): TypingScope =
-      new TypingScope(varNs, typeNs, TypingCtx())
+      new TypingScope(varNs, Map.empty, typeNs, TypingCtx())
   }
 
 
@@ -530,26 +562,67 @@ package types {
     then Some(SigiTypeError.mainExprConsumesElements(term.stackTy).setPos(term.pos))
     else None
 
-  def doValidation(env: TypingScope)(ast: KStatement): Either[SigiTypeError, TypedStmt] = {
+  def doValidation(env: TypingScope)(ast: KStatement): Either[SigiTypeError, TypedStmt] =
+    typeStatement(env)(ast).map(_._2)
+
+  private def typeStatement(env: TypingScope)(ast: KStatement): Either[SigiTypeError, (TypingScope, TypedStmt)] = {
     ast match
       case KBlock(stmts) =>
 
-        val fileEnv = stmts.collect {
-          case KFunDef(id, ty, _) => resolveFunType(env)(ty).map(VarBinding(id, _))
+        // first add all explicitly typed funs to the environment
+        val incompleteDefs = stmts.collect {
+          case KFunDef(id, Some(astTy), _) => resolveFunType(env)(astTy).map(VarBinding(id, _))
         }.flattenList.map(env.addBindings)
 
-        fileEnv.flatMap(env => stmts.map(doValidation(env)).flattenList.map(TBlock.apply).map(_.setPos(ast.pos)))
 
-      case KExprStatement(e) => types.assignType(env)(e).map(TExprStmt.apply).map(_.setPos(ast.pos))
-      case f@KFunDef(id, ty, body) =>
+        var runningEnv = incompleteDefs match
+          case Left(err) => return Left(err)
+          case Right(defs) => defs
+
+        val typedStmts = ListBuffer[TypedStmt]()
+        val errors = ListBuffer[SigiTypeError]()
+        for (stmt <- stmts) {
+          typeStatement(runningEnv)(stmt) match
+            case Left(error) =>
+              errors += error
+            case Right((e, tstmt)) =>
+              typedStmts += tstmt
+              runningEnv = e
+        }
+
+        errors.toList match
+          case Nil => Right((env, TBlock(typedStmts.toList).setPos(ast.pos)))
+          case List(e) => Left(e)
+          case moreErrors => Left(ListOfTypeErrors(moreErrors))
+
+      case KExprStatement(e) => types.assignType(env)(e).map(TExprStmt.apply).map(tstmt => (env, tstmt.setPos(ast.pos)))
+      case f@KFunDef(id, optAstTy, body) =>
         for {
-          funTy <- types.resolveFunType(env)(ty)
-          typedBody <- types.assignType(env.addBindings(List(VarBinding(id, funTy))))(body)
-          _ <- types.checkCompatible(typedBody.stackTy, funTy.stackTy)
-            .map(SigiTypeError.bodyTypeIsNotCompatibleWithSignature(typedBody.stackTy, funTy.stackTy, id.sourceName).setPos(f.pos).addCause)
-            .toLeft(())
-        } yield TFunDef(id, funTy.stackTy, typedBody).setPos(ast.pos)
+          // Option[Either[A, B]] => Either[A, Option[B]]
+          // this is the explicit type
+          funTy: Option[StackType] <- optAstTy.map(types.resolveFunType(env)).map(_.map(kfun => Some(kfun.stackTy))).getOrElse(Right(None))
+          // If the type is present, then we add a regular binding.
+          bodyEnv = funTy.map(ty => env.addBindings(List(VarBinding(id, KFun(ty)))))
+            // Otherwise, recursive calls are illegal
+            .getOrElse(env.addIncompleteBinding(id, SigiTypeError.illegalRecursionWithInferredType))
+
+          typedBody <- types.assignType(bodyEnv)(body)
+          // check that the type of the body is compatible with the signature
+          _ <- funTy.flatMap {
+            ty =>
+              types.checkCompatible(typedBody.stackTy, ty)
+                .map(SigiTypeError.bodyTypeIsNotCompatibleWithSignature(typedBody.stackTy, ty, id.sourceName).setPos(f.pos).addCause)
+          }.toLeft(())
+        } yield {
+          val actualFunTy = funTy.getOrElse(typedBody.stackTy.simplify)
+          (
+            // the new env is augmented with a binding for this fun
+            env.addBindings(List(VarBinding(id, KFun(actualFunTy)))),
+            TFunDef(id, actualFunTy, typedBody).setPos(ast.pos)
+          )
+        }
   }
+
 
   /** Check that the given type is compatible with the bound.
     * This means that the type is at least as general as the bound.
@@ -563,7 +636,7 @@ package types {
     */
   def checkCompatible(ty: StackType, bound: StackType): Option[SigiTypeError] =
     val ctx = new TypingCtx()
-    val tyAsIvars = ctx.mapToIvars(ty.canonicalize).pp("to ivars")
+    val tyAsIvars = ctx.mapToIvars(ty.canonicalize)
     ctx.unifyWithoutIvarConversion(tyAsIvars, bound.canonicalize)
 
   def resolveType(env: TypingScope)(t: AstType): Either[SigiTypeError, KStackTypeItem] = t match

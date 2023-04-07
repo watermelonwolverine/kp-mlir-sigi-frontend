@@ -1,6 +1,6 @@
 package de.cfaed.sigi
 
-import ast.{FuncId, KExpr, NameTopN}
+import ast.{FuncId, KExpr, NameTopN, UserFuncId}
 import repl.{Env, KValue}
 import types.*
 
@@ -50,6 +50,10 @@ case class ListOfErrors(lst: List[SigiCompilationError]) extends SigiCompilation
   lst.foreach(this.addCause)
 }
 
+case class ListOfTypeErrors(lst: List[SigiTypeError]) extends SigiTypeError(lst.size + " errors occurred") {
+  lst.foreach(this.addCause)
+}
+
 class SigiParseError(val msg: String) extends SigiCompilationError(msg) {
   override protected def errorType: String = "Parse error"
 }
@@ -81,6 +85,14 @@ object SigiTypeError {
 
   def bodyTypeIsNotCompatibleWithSignature(bodyTy: StackType, sig: StackType, funcName: String): SigiTypeError = SigiTypeError(
     s"Type of the body of $funcName is not compatible with declared type: expected $sig, got $bodyTy"
+    )
+
+  def illegalFwdReferenceToFunWithInferredType(funcId: FuncId): SigiTypeError = SigiTypeError(
+    s"Illegal forward reference to function ${funcId.sourceName} with inferred type"
+    )
+
+  def illegalRecursionWithInferredType(funcId: FuncId): SigiTypeError = SigiTypeError(
+    s"Illegal recursive call to function ${funcId.sourceName} with inferred type"
     )
 
   def mainExprConsumesElements(stackType: StackType): SigiTypeError = SigiTypeError(
