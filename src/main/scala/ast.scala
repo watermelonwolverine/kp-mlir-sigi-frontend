@@ -72,6 +72,12 @@ package ast {
     def sourceRepr: String = if isFunction then s"\\$sourceName" else sourceName
   }
 
+  object StackValueId {
+    def unapply(a: FuncId): Option[(String, Boolean, FilePos)] = a match
+      case s: StackValueId => Some((s.sourceName, s.isFunction, s.filePos))
+      case _ => None
+  }
+
   object FuncId {
     def unapply(id: FuncId): Option[(String, Option[FilePos])] = id match
       case id: PositionedFuncId => Some((id.sourceName, Some(id.filePos)))

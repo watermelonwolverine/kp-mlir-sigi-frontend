@@ -180,7 +180,11 @@ package repl {
           val (listItems, stackRest) = env.stack.splitAt(newItems)
           Right(env.copy(stack = VList(ty, listItems.reverse) :: stackRest))
       })
+
+    // if the value to be applied is not marked as a function, push it
+    case TFunApply(_, id@StackValueId(_, false, _)) => env(id).map(env.push)
     case TFunApply(_, id) => env(id).flatMap(applyValue(env))
+
     case TChain(_, a, b) => eval(a)(env).flatMap(e2 => eval(b)(e2))
     case TEvalBarrier(_) => Right(env) // do nothing, already evaluated
     case TPushQuote(e) => Right(env.push(VFun(Some("(quote)"), e.stackTy, eval(e))))
