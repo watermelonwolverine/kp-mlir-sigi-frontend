@@ -36,7 +36,8 @@ expr := literal                 // function that pushes a literal value
       | expr expr               // function composition
       | id | "(" op ")"         // function reference
       | "{" expr "}"            // quotation, ie push a closure
-      | "->" id ("," id)* ";"   // pop values and give them names
+      | "->" id ";"             // pop the top of the stack and give it a name
+      | "->" \id ";"            // pop a function value from the stack and give it a name
 ```
 The language has richer syntax for convenience, all of which reduces to the above expression forms.
 Each expression is a function from a stack to another stack (or equivalently it performs side effects on an implicit stack).
@@ -45,6 +46,8 @@ Typing and evaluation rules are described in the semantics section below.
 
 Additional expression forms:
 - Writing `\id` or `\op` is shorthand for quotation. Eg `\double` is the same as `{ double }`, `\+` is the same as `{ (+) }`
+- It is possible to compact several `-> id;` variable declarations into one pop expression, like `-> x, \f, y;`.
+These ids are popped from the stack right-to-left: the top of the stack is always written on the right. This is equivalent to `-> y; -> \f; -> x;`
 - Arithmetic expressions are supported with the usual precedence rules. They map to function application, eg
   - `1 + 2` is the same as `1 2 (+)`
   - `1 + 2 * 3` is the same as `1 2 3 (*) (+)`
@@ -125,12 +128,14 @@ Type inference is performed while type-checking expressions as explained in the 
 
 ### Typing and evaluation
 
-> - `id` resolves a name in the enclosing scope. Names resolve to a *value*, a value having a data type, not a stack type. 
->   - If `id` refers to a function of type $\mathbf{c}\to\mathbf{p}$, then that function is applied to the stack. The expression has that stack type. 
->   - If `id` refers to another kind of value of type $t$, then that value is pushed to the stack. The expression has stack type $\to t$. 
+> - `id` resolves a name in the enclosing scope. Names resolve to a *value*, a value having a data type, not a stack type.
+>   - If `id` refers to a function of type $\mathbf{c}\to\mathbf{p}$, which was declared either with `-> \id;` or `let id ...` then that function is applied to the stack. The expression has stack type $\mathbf{c}\to\mathbf{p}$.
+>   - If `id` otherwise refers to a value of type $t$, then that value is pushed to the stack. The expression has stack type $\to t$. 
 >   - If `id` does not refer to a name in scope, the expression is not well-typed and a compile-time error occurs.
 > - `{ e }` creates a function value whose expansion is the term `e` and pushes it on the stack. If $\mathtt{e}: t$, then $\mathtt{\{\,e\,\}} :\, \to t$.
-> - `-> x1,...,xn;` pops the $n$ values on top of the stack and binds them to names in the enclosing scope. The top of the stack is named $x_n$, the next value is named $x_{n-1}$, etc. The type of this expression is $'a_1, \ldots, 'a_n \to$, where the $'a_i$ are fresh type variables.
+> - `-> x;` pops the value on top of the stack and binds it to a name in the enclosing scope. The type of this expression is ${'}a \to$, where ${'}a$ is a fresh type variable.
+> - `-> \x;` pops the value on top of the stack and binds it to a name in the enclosing scope.
+> The name binds to a function of maximally general type $({'}A \to {'}B)$ (see [row polymorphism](#row-polymorphic-types)). The type of this expression is therefore $({'}A \to {'}B) \to$.
 > - `e1 e2` evaluates `e1`, then evaluates `e2`. In more abstract terms, this denotes the *composition* of both stack functions.
 
 #### Typing the composition rule
@@ -168,6 +173,21 @@ where `'S` and `'R` are row variables. Given the term `(\+) apply` for instance,
 
 Note that a function type $(c)_n \rightarrow (p)_m$, where no $c_i$ or $p_i$ is a row variable, is canonicalised to ${'}S, (c)_n \rightarrow {'}S, (p)_m$.
 The introduced row variable represents "the rest of the stack", which in a trivial function type like this is just preserved.
+
+#### Inference within higher-order functions
+
+The two forms for variable naming `-> x;` and `-> \x;` are here to disambiguate what the term `x` means in the following. 
+
+`-> x;` binds the name `x` to an unknown data type `'a` that will be resolved by type inference.
+Writing `x` will push that `'a` value on the stack, ie the expression `x` has stack type `-> 'a`.
+
+`-> \f;` additionally constrains the top of the stack to be a function value of type `'A -> 'B`.
+The expression `f` invokes that function, instead of pushing the function on the stack.
+It therefore has type `'A -> 'B` and not `-> ('A -> 'B)`.
+
+The second form is useful within higher-order functions, which receive function values as parameters.
+Note that with the `-> x;` form, `x` may still bind to a function value, but to invoke it you need to write `x apply` and not just `x`.
+Similarly, with the `-> \x;` form, you can push the function on the stack without invoking it by writing `\x` or `{ x }`.
 
 ## Builtins
 
