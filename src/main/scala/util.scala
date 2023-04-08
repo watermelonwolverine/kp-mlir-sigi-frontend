@@ -6,7 +6,7 @@ extension[A] (self: A)
   def pp(hint: String = ""): A = {
     val prefix = if hint.nonEmpty then s"$hint: " else ""
     val selfToStr = if self == null then "null" else self.toString
-    println(prefix + selfToStr)
+    System.err.println(prefix + selfToStr)
     self
   }
 

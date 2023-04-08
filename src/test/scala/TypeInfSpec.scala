@@ -27,7 +27,6 @@ class TypeInfSpec extends AnyFunSuite {
 
 
 
-  checkType("if (true) 1 else 2", "-> int")
 
   checkType("1 2 \\swap", "-> int, int, ('a, 'b -> 'b, 'a)")
   checkType("1 2 \\swap apply", "-> int, int")
@@ -42,7 +41,9 @@ class TypeInfSpec extends AnyFunSuite {
   checkType("-> x, y; x y", "'a, 'b -> 'a, 'b")
   checkType("-> x;", "'a ->")
   checkType("-> x, y; y", "'a, 'b -> 'b")
- // checkType("if (true) 1 else 2", "-> int")
+
+
+  checkType("if (true) 1 else 2", "-> int")
   checkType("if 1 else 2", "bool -> int")
   checkType("true if 1 else 2", "-> int")
   checkType("{->a,b;b} -> snd; 1 2 snd", "-> int")
@@ -78,6 +79,14 @@ class TypeInfSpec extends AnyFunSuite {
   // (it's not well formed). The well formed term:
   // (1 2 true if { -> x, y; x } else {-> x, y ; y}) apply
   // types correctly.
+
+
+  // higher order inference
+  checkType("-> f; f apply", "'A, ('A -> 'B) -> 'B")
+  checkType("-> f; \\f apply", "'a -> 'a")
+
+  checkType("-> f; f apply -> x; if (x) pass else pass", "'A, ('A -> 'B, bool) -> 'B")
+
 
 
   inline def compatibilityCheck(descr: String, expected: PartialFunction[Either[SigiCompilationError, Unit], Unit])

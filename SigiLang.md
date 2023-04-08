@@ -172,7 +172,7 @@ The introduced row variable represents "the rest of the stack", which in a trivi
 ## Builtins
 
 Builtin type constructors:
-- `bool`, a 1-bit integer
+- `bool`, a boolean type
 - `int`, a signed 32-bit integer
 
 Builtin functions, apart from operators:
@@ -193,6 +193,8 @@ quote: 'a -> (-> 'a)
 show: 'a ->
 # Print the top of the stack without popping it
 pp: 'a -> 'a
+# Do nothing
+pass: 'S -> 'S
 ```
 
 

@@ -101,6 +101,7 @@ package ast {
       case PushPrim(_, value) => value.toString
       case NameTopN(names) => names.mkString("-> ", ", ", ";")
       case PushList(items) => items.mkString("[", ", ", "]")
+      case Quote(FunApply(name)) => if Character.isAlphabetic(name(0)) then s"\\$name" else s"(\\$name)"
       case Quote(term) => s"{ $term }"
       case OpaqueExpr(te) => s"(${te.erase.toString} : ${te.stackTy})"
   }

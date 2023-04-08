@@ -132,6 +132,11 @@ package builtins {
           Right((if condition then thenV else elseV) :: tl)
       }
 
+    val pass = stackFun("pass", StackType()) {
+        case stack => Right(stack)
+    }
+
+
     val pop = stackFun("pop", StackType.generic1(tv => StackType(consumes = List(tv)))) {
       case _ :: tl => Right(tl)
     }
@@ -192,6 +197,7 @@ package builtins {
       dup,
       cond,
       pp,
+      pass,
       // swap top elements
       stackFun("swap", StackType.generic2((ta, tb) => StackType(consumes = List(ta, tb), produces = List(tb, ta)))) {
         case a :: b :: tl => Right(b :: a :: tl)
@@ -209,8 +215,4 @@ package builtins {
       }
       )
   }
-
-  val PredefinedSymbols: Map[String, KValue] = BuiltinSpecs.map(s => s.surfaceName -> s.asValue).toMap
-  val ReplBuiltins: Map[String, KValue] = ReplBuiltinSpecs.map(s => s.surfaceName -> s.asValue).toMap
-
 }

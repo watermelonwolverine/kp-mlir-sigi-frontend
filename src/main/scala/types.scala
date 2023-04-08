@@ -137,6 +137,7 @@ package types {
         "'" + names(k % names.length)
       }
     }
+
     def typeVarGenerator(): () => KTypeVar = {
       // for some reason I can't write this with andThen
       val nameGen = varNameGenerator()
@@ -144,19 +145,52 @@ package types {
     }
   }
 
-  class KInferenceVar(val origin: KTypeVar) extends KDataType {
-    var instantiation: KDataType = _
+  enum BoundKind(val symbol: String) {
+    case Lower extends BoundKind(">:")
+    case Eq extends BoundKind("=")
+    case Upper extends BoundKind("<:")
+
+    def opposite: BoundKind = this match
+      case Lower => Upper
+      case Eq => Eq
+      case Upper => Lower
+  }
+
+  class KInferenceVar(val origin: KTypeVar, private val ctx: TypingCtx) extends KDataType {
+    private val bounds: mutable.Map[BoundKind, mutable.Set[KStackTypeItem]] = mutable.Map()
+    private var _instantiation: KDataType = _
+
+    def instantiation: KDataType = _instantiation
+
+    def addBound(kind: BoundKind, t: KStackTypeItem): Unit = {
+      if bounds.getOrElseUpdate(kind, mutable.Set.empty).add(t) then
+        ctx.onBoundAdded(this, kind, t)
+    }
+
+    def substInBounds(subst: TySubst): Unit = {
+      bounds.mapValuesInPlace { (kind, boundSet) =>
+        boundSet.map(subst.substTy)
+      }
+    }
+
+    def instantiation_=(dt: KDataType): Unit = {
+      this._instantiation = dt
+      ctx.log.ivarInstantiated(this, dt)
+    }
+
     private[types] val id = {
       val id = KInferenceVar.seqNum
       KInferenceVar.seqNum += 1
       id
     }
   }
+
   object KInferenceVar {
     private var seqNum = 0
   }
 
   class KRowVar(val name: String) extends KStackTypeItem
+
   object KRowVar {
     def rowVarGenerator(): () => KRowVar = {
       // for some reason I can't write this with andThen
@@ -164,10 +198,12 @@ package types {
       () => KRowVar(nameGen().toUpperCase(Locale.ROOT))
     }
   }
-  class KRowIVar(val origin: KRowVar) extends KStackTypeItem {
+
+  class KRowIVar(val origin: KRowVar, val ctx: TypingCtx) extends KStackTypeItem {
     private var _instantiation: List[KStackTypeItem] = _
     val aliases: mutable.Set[KRowIVar] = mutable.Set()
-    private[types] val id = {
+    // sequential number
+    private[sigi] val id = {
       val id = KRowIVar.seqNum
       KRowIVar.seqNum += 1
       id
@@ -176,7 +212,10 @@ package types {
     def instantiation: List[KStackTypeItem] = this._instantiation
 
     def instantiation_=(inst: List[KStackTypeItem]): Unit = {
-      this._instantiation = inst
+      if (inst != this.instantiation && inst != null) {
+        this._instantiation = inst
+        this.ctx.log.rivarInstantiated(this, inst)
+      }
     }
   }
   object KRowIVar {
@@ -214,9 +253,9 @@ package types {
       else
         val rv = KRowVar("'S")
         StackType(
-          consumes = rv :: this.consumes,
-          produces = rv :: this.produces
-        )
+          consumes = rv :: this.consumes.map(canonicalizeRec),
+          produces = rv :: this.produces.map(canonicalizeRec)
+          )
 
     /** Makes trivial row variables disappear. */
     def simplify: StackType = this match
@@ -229,8 +268,11 @@ package types {
     def map(f: KStackTypeItem => KStackTypeItem): StackType = StackType(
       consumes = this.consumes.map(f),
       produces = this.produces.map(f),
-    )
+      )
 
+    private def canonicalizeRec(t: KStackTypeItem) = t match
+      case KFun(st) => KFun(st.canonicalize)
+      case t => t
   }
 
   object StackType {
@@ -296,6 +338,8 @@ package types {
 
     def substStackType(stackType: StackType): StackType = stackType.map(applyEltWiseSubst)
 
+    final def substTy(ty: KStackTypeItem): KStackTypeItem = applyEltWiseSubst(ty)
+
     protected def applyEltWiseSubst(t: KStackTypeItem): KStackTypeItem = t match
       case a: KDataType => substDataTy(a)
       case a => a
@@ -316,18 +360,55 @@ package types {
   }
 
   def binOpType(t: KDataType) = StackType(consumes = List(t, t), produces = List(t))
+
   def unaryOpType(t: KDataType) = StackType(consumes = List(t), produces = List(t))
 
-  private[types] class TypingCtx {
+
+  private[types] class TypingCtx(private[types] val log: debug.TypeInfLogger) {
+
+    private val myIvars = mutable.Set[KInferenceVar]()
+    private val myRIvars = mutable.Set[KRowIVar]()
+
+    def newIvar(typeVar: KTypeVar): KInferenceVar =
+      val ivar = KInferenceVar(typeVar, this)
+      myIvars += ivar
+      ivar
+
+    def newRIvar(rvar: KRowVar): KRowIVar =
+      val rivar = KRowIVar(rvar, this)
+      myRIvars += rivar
+      rivar
+
+    def onBoundAdded(ivar: KInferenceVar, boundKind: BoundKind, bound: KStackTypeItem): Unit = {
+      log.boundAdded(ivar, boundKind, bound)
+      bound match
+        case ivar: KInferenceVar => ivar.addBound(boundKind.opposite, ivar)
+        case _ =>
+    }
+
+    /** Check that the given type is compatible with the bound.
+      * This means that the type is at least as general as the bound.
+      * This represents a subtyping relation between function types.
+      * TODO subtyping during unification.
+      *
+      * To check this, the bound is treated as a ground type (its
+      * type variables are treated as types, not variables). A round
+      * of type inference then checks that there exists an instantiation
+      * of the first type that is compatible with the bound.
+      */
+    def checkCompatible(ty: StackType, bound: StackType): Option[SigiTypeError] =
+      val tyAsIvars = mapToIvars(ty.canonicalize)
+      unifyWithoutIvarConversion(tyAsIvars, bound.canonicalize)
+
 
     def toIvarSubst: TySubst = {
       val toIvars = mutable.Map[KTypeVar, KInferenceVar]()
       val toRivars = mutable.Map[KRowVar, KRowIVar]()
       makeTySubst(
-      { case t: KTypeVar => toIvars.getOrElseUpdate(t, KInferenceVar(t)) },
-      { case t: KRowVar => toRivars.getOrElseUpdate(t, KRowIVar(t)) }
-                                                                          )
+      { case t: KTypeVar => toIvars.getOrElseUpdate(t, newIvar(t)) },
+      { case t: KRowVar => toRivars.getOrElseUpdate(t, newRIvar(t)) })
     }
+
     /** Replace type vars with fresh inference vars. */
     def mapToIvars(st: StackType): StackType = toIvarSubst.substStackType(st)
 
@@ -341,7 +422,9 @@ package types {
         override protected def substIVar(ivar: KInferenceVar): KDataType =
           if ivar.instantiation != null
           then
-            ivar.instantiation = substDataTy(ivar.instantiation)
+            val groundInst = substDataTy(ivar.instantiation)
+            if (groundInst != ivar.instantiation)
+              ivar.instantiation = groundInst
             ivar.instantiation
           else if eliminateIvars then
             ivar.instantiation = tvGen()
@@ -352,13 +435,22 @@ package types {
         def groundList(lst: List[KStackTypeItem]): List[KStackTypeItem] =
           lst.flatMap {
             case rivar: KRowIVar =>
-              rivar.instantiation =
-                if rivar.instantiation != null
-                then groundList(rivar.instantiation)
-                else
-                  val aliasedInst = rivar.aliases.find(_.instantiation != null).map(_.instantiation)
-                  aliasedInst.getOrElse(List(rvGen()))
-              rivar.instantiation
+              if rivar.instantiation != null
+              then
+                rivar.instantiation = groundList(rivar.instantiation)
+                rivar.instantiation
+              else if eliminateIvars then
+                rivar.aliases.remove(rivar) // make sure we don't recurse infinitely
+                val aliasedInst = rivar.aliases.find(_.instantiation != null).map(_.instantiation)
+                val inst = aliasedInst.getOrElse(List(rvGen()))
+                rivar.aliases.foreach(_.instantiation = inst)
+                rivar.instantiation = inst
+                inst
+              else
+                // only resolve aliases. Take the smallest one as the "canonical" one
+                val smallestAlias = rivar.aliases.minByOption(_.id).filter(_.id < rivar.id).getOrElse(rivar)
+                List(smallestAlias)
+
             case t => List(applyEltWiseSubst(t))
           }
 
@@ -382,7 +474,7 @@ package types {
     def partialGround: TySubst = groundSubst(eliminateIvars = false)
 
 
-    def unifyWithoutIvarConversion(a: StackType, b: StackType): Option[SigiTypeError] =
+    private def unifyWithoutIvarConversion(a: StackType, b: StackType): Option[SigiTypeError] =
       unify(a.produces, b.produces).orElse(unify(a.consumes, b.consumes))
 
     def unify(a: StackType, b: StackType): Option[SigiTypeError] =
@@ -394,10 +486,11 @@ package types {
       * Unify both lists of types. This adds constraints on the inference variables to make them
       * unifiable.
       */
-    def unify(a: List[KStackTypeItem], b: List[KStackTypeItem], matchSuffix: Boolean = false): Option[SigiTypeError] = {
-      // println(s"unify: $a =:= $b")
+    def unify(a: List[KStackTypeItem], b: List[KStackTypeItem]): Option[SigiTypeError] = {
+      log.subUnificationRequest(a, b)
 
       def makeAlias(r: KRowIVar, s: KRowIVar, inst: List[KStackTypeItem]): Unit = {
+        log.recordAliasing(r, s, inst)
         r.aliases += s
         s.aliases += r
         r.instantiation = inst
@@ -421,7 +514,7 @@ package types {
               None
             else
             // the instantiation
-              unify(rivar.instantiation, tyList, matchSuffix)
+              unify(rivar.instantiation, tyList)
 
 
       def unifyImpl(aReversed: List[KStackTypeItem], bReversed: List[KStackTypeItem]): Option[SigiTypeError] = {
@@ -518,13 +611,15 @@ package types {
           .getOrElse(SigiTypeError.undef(termName))
         )
 
-    def resolveType(typeName: String): Either[SigiTypeError, datamodel.TypeDescriptor] =
+    def resolveTypeName(typeName: String): Either[SigiTypeError, datamodel.TypeDescriptor] =
       typesInScope.get(typeName).toRight(SigiTypeError.undef(typeName))
 
   }
   object TypingScope {
-    def apply(varNs: BindingTypes, typeNs: Map[String, datamodel.TypeDescriptor]): TypingScope =
-      new TypingScope(varNs, Map.empty, typeNs, TypingCtx())
+    def apply(varNs: BindingTypes,
+              typeNs: Map[String, datamodel.TypeDescriptor],
+              debugLogger: debug.TypeInfLogger = debug.NoopLogger): TypingScope =
+      new TypingScope(varNs, Map.empty, typeNs, TypingCtx(debugLogger))
   }
 
 
@@ -556,6 +651,9 @@ package types {
           .map(te => TModule(functions = typedFuns, mainExpr = te))
     }
   }
+
+  def checkCompatible(ty: StackType, bound: StackType)(implicit log: debug.TypeInfLogger = debug.NoopLogger): Option[SigiTypeError] =
+    new TypingCtx(log).checkCompatible(ty, bound)
 
   def checkMainExprType(term: TypedExpr): Option[SigiTypeError] =
     if term.stackTy.simplify.consumes.nonEmpty
@@ -610,7 +708,7 @@ package types {
           // check that the type of the body is compatible with the signature
           _ <- funTy.flatMap {
             ty =>
-              types.checkCompatible(typedBody.stackTy, ty)
+              env.ctx.checkCompatible(typedBody.stackTy, ty)
                 .map(SigiTypeError.bodyTypeIsNotCompatibleWithSignature(typedBody.stackTy, ty, id.sourceName).setPos(f.pos).addCause)
           }.toLeft(())
         } yield {
@@ -623,24 +721,8 @@ package types {
         }
   }
 
-
-  /** Check that the given type is compatible with the bound.
-    * This means that the type is at least as general as the bound.
-    * This represents a subtyping relation between function types.
-    * TODO subtyping during unification.
-    *
-    * To check this, the bound is treated as a ground type (its
-    * type variables are treated as types, not variables). A round
-    * of type inference then checks that there exists an instantiation
-    * of the first type that is compatible with the bound.
-    */
-  def checkCompatible(ty: StackType, bound: StackType): Option[SigiTypeError] =
-    val ctx = new TypingCtx()
-    val tyAsIvars = ctx.mapToIvars(ty.canonicalize)
-    ctx.unifyWithoutIvarConversion(tyAsIvars, bound.canonicalize)
-
   def resolveType(env: TypingScope)(t: AstType): Either[SigiTypeError, KStackTypeItem] = t match
-    case ATypeCtor(name, tyargs) => env.resolveType(name).flatMap {
+    case ATypeCtor(name, tyargs) => env.resolveTypeName(name).flatMap {
       case datamodel.TypeParm(tv) =>
         if tyargs.isEmpty
         then Right(tv)
@@ -660,19 +742,22 @@ package types {
     }
     case tv: ATypeVar => Right(KTypeVar(tv.name)) // here we create a new type var always. We will coalesce type vars later.
     case tv: ARowVar => Right(KRowVar(tv.name)) // here we create a new type var always. We will coalesce type vars later.
-    case ft: AFunType => resolveFunType(env)(ft)
+    case ft: AFunType => resolveFunTypeRec(env)(ft)
 
-  def resolveFunType(env: TypingScope)(t: AFunType): Either[SigiTypeError, KFun] = {
+
+  // this one does not merge tvars yet
+  private def resolveFunTypeRec(env: TypingScope)(t: AFunType): Either[SigiTypeError, KFun] =
     val AFunType(consumes, produces) = t
     for {
       cs <- consumes.map(resolveType(env)).flattenList
       ps <- produces.map(resolveType(env)).flattenList
     } yield {
       val st = StackType(consumes = cs, produces = ps)
-      val canon = mergeIdenticalTvars(st)
-      KFun(canon)
+      KFun(st)
     }
-  }
+
+  def resolveFunType(env: TypingScope)(t: AFunType): Either[SigiTypeError, KFun] =
+    resolveFunTypeRec(env)(t).map(fun => mergeIdenticalTvars(fun.stackTy)).map(KFun.apply)
 
   private def mergeIdenticalTvars(st: StackType): StackType = {
     val tvGen = KTypeVar.typeVarGenerator()
@@ -706,7 +791,7 @@ package types {
       val typeVarGen = KTypeVar.typeVarGenerator()
       val newBindings = names.map { name =>
         val pos = FilePos(position = node.pos, fileName = "") // TODO filename
-        VarBinding(new StackValueId(name, pos), KInferenceVar(typeVarGen()))
+        VarBinding(new StackValueId(name, pos), scope.ctx.newIvar(typeVarGen()))
       }
 
       // this is the most generic type for this construct: every name has a different ivar
@@ -735,9 +820,14 @@ package types {
         newEnv <- {
           def toIvarSubst = scope.ctx.toIvarSubst
 
+          def log = scope.ctx.log
+
+          log.startFrame(node)
           val (leftI, rightI) = (toIvarSubst.substTerm(leftTree), toIvarSubst.substTerm(rightTree))
           val (ta, tb) = (toIvarSubst.substStackType(leftI.stackTy.canonicalize), toIvarSubst.substStackType(rightI.stackTy.canonicalize))
 
+
+          log.unificationRequest(ta, tb)
           scope.ctx.unify(ta.produces, tb.consumes).map(_.setPos(node.pos))
             .toLeft({
               val ground = scope.ctx.partialGround
@@ -751,7 +841,9 @@ package types {
 
               val stackTy = StackType(consumes = cons ++ ta2.consumes,
                                       produces = prod ++ tb2.produces)
-              // println(s": $stackTy")
+
+              log.endFrameWithFinalType(stackTy)
+
               TChain(stackTy, ground.substTerm(leftI), ground.substTerm(rightI)).setPos(node.pos)
             })
             .map(term => (term, rightScope))

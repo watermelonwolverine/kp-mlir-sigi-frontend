@@ -27,7 +27,7 @@ class ParserSpec extends AnyFunSuite with Matchers {
     test(term) {
       val parsed = new ast.SigiParser().parseStmt(term)
       inside(parsed) {
-        case Right(ast) if tree.isDefinedAt(ast) => ()
+        case Right(ast) if tree.isDefinedAt(ast) => tree(ast)
       }
     }
   }
@@ -108,11 +108,16 @@ class ParserSpec extends AnyFunSuite with Matchers {
       assertResult(Right(expected.toString))(resolved.map(_.toString))
   }
 
+  checkTreeMatches("let id: 'S, ('S -> 'R, bool), ('R -> 'S) -> 'S = ->x; x;;") {
+    case KFunDef(_, Some(funT), _) =>
+      val resolved = types.resolveFunType(Env.Default.toTypingScope)(funT)
+      assertResult(Right("('A, ('A -> 'B, bool), ('B -> 'A) -> 'A)"))(resolved.map(_.toString))
+  }
+
   checkTreeMatches("let id_inferred = ->x; x;;") {
     case f@KFunDef(_, None, _) =>
-      val ExpectedType = StackType.generic1(StackType.symmetric1)
       types.doValidation(Env.Default.toTypingScope)(f) match
-        case Right(TFunDef(_, ExpectedType, _)) =>
+        case Right(TFunDef(_, StackType(List(a: KTypeVar), List(b: KTypeVar)), _)) if a == b =>
         case a => fail(s"Unexpected result: $a")
   }
 }

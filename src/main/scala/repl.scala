@@ -125,7 +125,8 @@ package repl {
 
     export typesInScope.get as getType
 
-    def toTypingScope: TypingScope = TypingScope(bindingTypes, typesInScope)
+    def toTypingScope: TypingScope = TypingScope(bindingTypes, typesInScope,
+                                                 debug.debugTypeInfLogger)
   }
 
   object Env {
