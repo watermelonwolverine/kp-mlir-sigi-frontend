@@ -87,8 +87,8 @@ module {
             closure.return %s10: !sigi.stack
         }
         %s11 = sigi.push %s8, %v9: !closure.box<(!sigi.stack) -> !sigi.stack>
-        %v13 = closure.box [%v10_a = %v2_a : i32, %v11_b = %v3_b : i32, %v12_n = %v1_n : i32] (%s12 : !sigi.stack) -> !sigi.stack { // -> int
-            %s13 = sigi.push %s12, %v12_n: i32 // push n
+        %v13 = closure.box [%v10_n = %v1_n : i32, %v11_a = %v2_a : i32, %v12_b = %v3_b : i32] (%s12 : !sigi.stack) -> !sigi.stack { // -> int
+            %s13 = sigi.push %s12, %v10_n: i32 // push n
             %v14 = arith.constant 1: i32
             %s14 = sigi.push %s13, %v14: i32
             // =
@@ -96,13 +96,13 @@ module {
             %s16, %v16 = sigi.pop %s15: i32
             %v17 = arith.cmpi "eq", %v15, %v16: i32
             %s17 = sigi.push %s16, %v17: i1
-            %v19 = closure.box [%v18_b = %v11_b : i32] (%s18 : !sigi.stack) -> !sigi.stack { // -> int
+            %v19 = closure.box [%v18_b = %v12_b : i32] (%s18 : !sigi.stack) -> !sigi.stack { // -> int
                 %s19 = sigi.push %s18, %v18_b: i32 // push b
                 closure.return %s19: !sigi.stack
             }
             %s20 = sigi.push %s17, %v19: !closure.box<(!sigi.stack) -> !sigi.stack>
-            %v23 = closure.box [%v20_a = %v10_a : i32, %v21_b = %v11_b : i32, %v22_n = %v12_n : i32] (%s21 : !sigi.stack) -> !sigi.stack { // -> int
-                %s22 = sigi.push %s21, %v22_n: i32 // push n
+            %v23 = closure.box [%v20_n = %v10_n : i32, %v21_a = %v11_a : i32, %v22_b = %v12_b : i32] (%s21 : !sigi.stack) -> !sigi.stack { // -> int
+                %s22 = sigi.push %s21, %v20_n: i32 // push n
                 %v24 = arith.constant 1: i32
                 %s23 = sigi.push %s22, %v24: i32
                 // -
@@ -110,9 +110,9 @@ module {
                 %s25, %v26 = sigi.pop %s24: i32
                 %v27 = arith.subi %v25, %v26: i32
                 %s26 = sigi.push %s25, %v27: i32
-                %s27 = sigi.push %s26, %v21_b: i32 // push b
-                %s28 = sigi.push %s27, %v20_a: i32 // push a
-                %s29 = sigi.push %s28, %v21_b: i32 // push b
+                %s27 = sigi.push %s26, %v22_b: i32 // push b
+                %s28 = sigi.push %s27, %v21_a: i32 // push a
+                %s29 = sigi.push %s28, %v22_b: i32 // push b
                 // +
                 %s30, %v28 = sigi.pop %s29: i32
                 %s31, %v29 = sigi.pop %s30: i32
