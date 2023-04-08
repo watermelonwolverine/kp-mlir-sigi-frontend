@@ -66,7 +66,11 @@ package ast {
   }
 
   /** ID of a variable declared in a local scope on the stack. */
-  class StackValueId(override val sourceName: String, override val filePos: FilePos) extends PositionedFuncId // not emittable
+  class StackValueId(override val sourceName: String,
+                     val isFunction: Boolean,
+                     override val filePos: FilePos) extends PositionedFuncId {
+    def sourceRepr: String = if isFunction then s"\\$sourceName" else sourceName
+  }
 
   object FuncId {
     def unapply(id: FuncId): Option[(String, Option[FilePos])] = id match
@@ -99,7 +103,7 @@ package ast {
       case Chain(a, b) => s"($a $b)"
       case FunApply(name) => if Character.isAlphabetic(name(0)) then name else s"($name)"
       case PushPrim(_, value) => value.toString
-      case NameTopN(names) => names.mkString("-> ", ", ", ";")
+      case NameTopN(ids) => ids.map(_.sourceRepr).mkString("-> ", ", ", ";")
       case PushList(items) => items.mkString("[", ", ", "]")
       case Quote(FunApply(name)) => if Character.isAlphabetic(name(0)) then s"\\$name" else s"(\\$name)"
       case Quote(term) => s"{ $term }"
@@ -127,17 +131,18 @@ package ast {
     setPos(term.pos)
   }
 
-  case class NameTopN(names: List[String]) extends KExpr {
-    def stackType: StackType = StackType.generic(newTVar => {
-      StackType(consumes = names.map(_ => newTVar()))
-    })
-  }
+  case class VarNameDecl(isFunction: Boolean, name: String) extends Positional
+
+  case class NameTopN(names: List[StackValueId]) extends KExpr
 
 
   class SigiParser(private val fileName: String = "") extends Parsers with PackratParsers {
     override type Elem = KToken
 
     def nextFunId(id: ID): UserFuncId = new UserFuncId(id.name, FilePos(id.pos, fileName))
+
+    def toStackId(id: VarNameDecl): StackValueId =
+      new StackValueId(id.name, id.isFunction, FilePos(id.pos, fileName))
 
 
     private def thunk =
@@ -205,8 +210,15 @@ package ast {
         | thunk
         | ifelse
 
+    private def varNameDecl: Parser[VarNameDecl] =
+      BACKSLASH.? ~ id ^^ {
+        case backslash ~ id => VarNameDecl(isFunction = backslash.isDefined, id.name).setPos(id.pos)
+      }
+
     private def nameTopN: Parser[KExpr] =
-      ARROW ~ rep1sep(id, COMMA) <~ SEMI ^^ { case arrow ~ ids => NameTopN(ids.map(_.name)).setPos(arrow.pos) }
+      ARROW ~ rep1sep(varNameDecl, COMMA) <~ SEMI ^^ {
+        case arrow ~ decls => NameTopN(decls.map(toStackId)).setPos(arrow.pos)
+      }
 
     private def unary: Parser[KExpr] =
       (OP("-") | OP("+") | OP("~") | OP("!")).? ~ primary ^^ {
@@ -260,7 +272,7 @@ package ast {
       case Chain(a, b) => validate(a).orElse(validate(b))
       case Quote(term) => validate(term)
       case node@NameTopN(names) =>
-        if names.distinct.lengthCompare(names) != 0 then
+        if names.map(_.sourceName).distinct.lengthCompare(names) != 0 then
           Some(SigiParseError.namesShouldBeUnique(node))
         else
           None

@@ -10,8 +10,9 @@ package debug {
 
   import scala.io.AnsiColor
 
-  val debugTypeInfLogger = NoopLogger
-  // val debugTypeInfLogger = DebugTypeInfLogger()
+  val debugTypeInfLogger =
+    NoopLogger
+  //    DebugTypeInfLogger()
 
   class Coloring private(val useColors: Boolean) extends scala.io.AnsiColor {
 
@@ -100,12 +101,12 @@ package debug {
     }
 
     override def endFrameWithFinalType(st: StackType): Unit = {
-      println(s"- Final type: ${colors.paintRed(st)}")
+      println(s"- Final type: ${colors.colorTypeLike(st)}")
       indent -= 4
     }
 
     override def unificationRequest(stLeft: StackType, stRight: StackType): Unit =
-      println(s"- Unifying ${colors.colorTypeLike(stLeft)} with ${colors.colorTypeLike(stRight)}")
+      println(s"- Chaining ${colors.colorTypeLike(stLeft)} with ${colors.colorTypeLike(stRight)}")
 
     override def subUnificationRequest(left: List[KStackTypeItem], right: List[KStackTypeItem]): Unit =
       println(s"-+ Unifying ${colors.colorTypeLike(left)} with ${colors.colorTypeLike(right)}")

@@ -14,8 +14,21 @@ let while: 'S, ('S -> 'R, bool), ('R -> 'S) -> 'S =
   else pass
 ;;
 
+
+let while2: 'S, ('S -> 'R, bool), ('R -> 'S) -> 'S =
+  -> \evalCondition, \body;
+  evalCondition -> conditionTrue;
+  body
+  if (conditionTrue) \evalCondition \body while2
+  else pass
+;;
+
 let whileRec: 'S, bool, ('S -> 'R, bool), ('R -> 'S) -> 'S = -> cond, evCond, body; if (cond) body evCond whileRec evCond body else pass ;;
 
 let while = -> evalCondition, body; evalCondition apply -> conditionTrue; body apply if (conditionTrue) pass else pass ;;
 
 let while: 'S, ('S -> 'R, bool), ('R -> 'S) -> 'S = -> evalCondition, body; evalCondition apply -> conditionTrue; body apply if (conditionTrue) evalCondition body while else pass ;;
+
+let while: 'S, ('S -> 'R, bool), ('R -> 'S) -> 'S = -> evalCondition, body; evalCondition apply -> conditionTrue; body apply if (conditionTrue) evalCondition body while else pass ;;
+
+let while2: 'S, ('S -> 'R, bool), ('R -> 'S) -> 'S = -> \evalCondition, \body; evalCondition -> conditionTrue; body if (conditionTrue) \evalCondition \body while2 else pass ;;

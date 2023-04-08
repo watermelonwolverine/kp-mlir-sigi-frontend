@@ -17,9 +17,11 @@ import scala.util.Right
   */
 class ParserSpec extends AnyFunSuite with Matchers {
 
-  inline def checkExpr(term: String, tree: KExpr): Unit = {
+  inline def checkExpr(term: String, tree: AstBuildingDsl.ExprMatcher): Unit = {
     test(term) {
-      assertResult(Right(tree))(new ast.SigiParser().parseExpr(term))
+      inside(new ast.SigiParser().parseExpr(term)) {
+        case Right(ast) if tree.isDefinedAt(ast) => tree(ast)
+      }
     }
   }
 
@@ -33,14 +35,24 @@ class ParserSpec extends AnyFunSuite with Matchers {
   }
 
   object AstBuildingDsl {
+    type ExprMatcher = PartialFunction[KExpr, Unit]
 
-    extension (e1: KExpr)
+    given Conversion[KExpr, ExprMatcher] with
+      override def apply(x: KExpr): ExprMatcher = { case e if e == x => }
+
+    extension (e1: ExprMatcher)
       @targetName("chain")
-      def ~(e2: KExpr): Chain = Chain(e1, e2)
+      def ~(e2: ExprMatcher): ExprMatcher = {
+        case Chain(a, b) if e1.isDefinedAt(a) && e2.isDefinedAt(b) =>
+      }
 
     def p[T](t: T)(using KPrimitive[T]): PushPrim[T] = PushPrim(implicitly[KPrimitive[T]], t)
-    def app(name:String): FunApply = FunApply(name)
-    def names(names: String*): NameTopN = NameTopN(names.toList)
+
+    def app(name: String): FunApply = FunApply(name)
+
+    def names(names: String*): ExprMatcher = {
+      case NameTopN(ids) if ids.map(_.sourceName) == names.toList =>
+    }
 
     given KPrimitive[Int] = types.KInt
 

@@ -39,7 +39,7 @@ package types {
         case TPushList(_, items) => PushList(items.map(_.erase))
         case TFunApply(_, name) => FunApply(name.sourceName)
         case TPushQuote(term) => Quote(term.erase)
-        case TNameTopN(_, names) => NameTopN(names.map(_.sourceName))
+        case TNameTopN(_, ids) => NameTopN(ids)
         case TPushPrim(ty, value) => PushPrim(ty, value)
         case TEvalBarrier(te) => OpaqueExpr(te)
       res.setPos(this.pos)
@@ -282,6 +282,12 @@ package types {
 
     def symmetric1(t: KDataType): StackType = symmetric(List(t))
 
+    // Type ('A -> 'B)
+    def anyFunction: StackType = {
+      val rowVarGen = KRowVar.rowVarGenerator()
+      StackType(List(rowVarGen()), List(rowVarGen()))
+    }
+
     def generic[T](f: (() => KTypeVar) => T): T = {
       f(KTypeVar.typeVarGenerator())
     }
@@ -437,6 +443,8 @@ package types {
             case rivar: KRowIVar =>
               if rivar.instantiation != null
               then
+                if (rivar.instantiation.contains(rivar))
+                  throw new IllegalStateException(s"$rivar instantiation contains itself: ${rivar.instantiation}")
                 rivar.instantiation = groundList(rivar.instantiation)
                 rivar.instantiation
               else if eliminateIvars then
@@ -787,11 +795,14 @@ package types {
       result.left.map(_.setPos(node.pos))
 
     case Quote(term) => assignTypeRec(scope)(term).map(t => (TPushQuote(t._1).setPos(node.pos), scope))
-    case NameTopN(names) =>
+    case NameTopN(ids) =>
       val typeVarGen = KTypeVar.typeVarGenerator()
-      val newBindings = names.map { name =>
-        val pos = FilePos(position = node.pos, fileName = "") // TODO filename
-        VarBinding(new StackValueId(name, pos), scope.ctx.newIvar(typeVarGen()))
+      val newBindings = ids.map { id =>
+        val ty =
+          if id.isFunction
+          then KFun(scope.ctx.mapToIvars(StackType.anyFunction))
+          else scope.ctx.newIvar(typeVarGen())
+        VarBinding(id, ty)
       }
 
       // this is the most generic type for this construct: every name has a different ivar
@@ -801,12 +812,9 @@ package types {
       Right((TNameTopN(withIvars, newBindings.map(_.funcId).asInstanceOf[List[StackValueId]]).setPos(node.pos), newEnv))
 
     case FunApply(name) =>
-      @tailrec
-      def typeFunApply(funT: VarBinding): TFunApply = funT.ty match
-        case KFun(stackTy) => TFunApply(stackTy, funT.funcId)
-        // if the function is itself in inference, we need to resolve it
-        case ivar: KInferenceVar if ivar.instantiation != null => typeFunApply(VarBinding(funT.funcId, ivar.instantiation))
-        case t => TFunApply(StackType.pushOne(t), funT.funcId)
+      def typeFunApply(funT: VarBinding): TFunApply = funT match
+        case VarBinding(id, KFun(stackTy)) => TFunApply(stackTy, id)
+        case VarBinding(id, ty) => TFunApply(StackType.pushOne(ty), id)
 
       scope.getBinding(name) match
         case Left(err) => Left(err.setPos(node.pos))

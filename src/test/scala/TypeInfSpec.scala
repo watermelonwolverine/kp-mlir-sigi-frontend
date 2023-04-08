@@ -46,7 +46,7 @@ class TypeInfSpec extends AnyFunSuite {
   checkType("if (true) 1 else 2", "-> int")
   checkType("if 1 else 2", "bool -> int")
   checkType("true if 1 else 2", "-> int")
-  checkType("{->a,b;b} -> snd; 1 2 snd", "-> int")
+  checkType("{->a,b;b} -> \\snd; 1 2 snd", "-> int")
 
   checkType("1 2 -> x, y; x y", "-> int, int")
   checkType("(1 2 -> x, y;) x y", "-> int, int")
@@ -62,7 +62,7 @@ class TypeInfSpec extends AnyFunSuite {
 
   // this used to execute correctly but type to
   //  -> int, ('a, 'b -> 'b), str
-  checkType("\"a\" 2 {->a,b; b} -> snd; snd", "-> int")
+  checkType("\"a\" 2 {->a,b; b} -> \\snd; snd", "-> int")
   // Same as previous. Given application of terms with
   // types (-> 'a, 'b) ('c ->), we should infer that 'b = 'c.
   // This is because the left term will push and 'a, then a 'b,
