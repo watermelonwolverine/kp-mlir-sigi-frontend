@@ -282,6 +282,8 @@ package types {
 
     def symmetric1(t: KDataType): StackType = symmetric(List(t))
 
+    def aToB(a: KStackTypeItem, b: KStackTypeItem): StackType = StackType(List(a), List(b))
+
     // Type ('A -> 'B)
     def anyFunction: StackType = {
       val rowVarGen = KRowVar.rowVarGenerator()

@@ -164,6 +164,18 @@ package builtins {
           case VFun(_, _, fundef) :: rest => fundef(env.copy(stack = rest))
           case _ => Left(SigiEvalError.stackTypeError(t, env))
     }
+    val compose = stackFun("compose", {
+      // apply   : ('A -> 'B) ('B -> 'C) -> ('A -> 'C)
+      val row = KRowVar.rowVarGenerator()
+      val (a, b, c) = (row(), row(), row())
+      StackType(consumes = List(KFun(StackType.aToB(a, b)), KFun(StackType.aToB(b, c))),
+                produces = List(KFun(StackType.aToB(a, c))))
+    }) {
+      // here we assume the term is well-typed, and so the fun is compatible with the rest of the stack.
+      case VFun(_, StackType(b, c), bToCDef) :: VFun(_, StackType(a, b2), aToBDef) :: rest if b == b2 =>
+        Right(VFun(None, StackType(a, c), { env => aToBDef(env).flatMap(bToCDef) }) :: rest)
+    }
+
 
     Set(
       // These operators need to be there because the parser refers to them.
@@ -193,6 +205,7 @@ package builtins {
       // TODO compose : ('S ('B -> 'C) ('A -> 'B) -> 'S ('A -> 'C))
       //      while   : ('S ('S -> 'R bool) ('R -> 'S) -> 'S)
       apply,
+      compose,
       pop,
       dup,
       cond,
