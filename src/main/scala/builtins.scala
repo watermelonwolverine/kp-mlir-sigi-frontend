@@ -37,6 +37,8 @@ package builtins {
     val id: BuiltinFuncId = BuiltinFuncId(surfaceName)
 
     def asValue: VFun = VFun(Some(surfaceName), stackType, evaluationStrategy)
+
+    def asVarBinding: VarBinding = VarBinding(id, KFun(stackType))
   }
 
   private def genericCmpOp(name: String, negated: Boolean): BuiltinFunSpec = {
@@ -105,6 +107,25 @@ package builtins {
           .map(e => env.copy(stack = e))
     }
   }
+  private def stdLibFun(funsInScope: BuiltinFunSpec*)(code: String): BuiltinFunSpec = {
+    val typingScope = TypingScope(funsInScope.map(f => f.surfaceName -> f.asVarBinding).toMap, datamodel.TypeDescriptor.Predefined)
+
+    val result = for {
+      tree <- new ast.SigiParser().parseFunDef(code)
+      typed <- types.doValidation(typingScope)(tree)
+    } yield typed
+
+    result match
+      case Right(TFunDef(id, ty, body)) => BuiltinFunSpec(
+        surfaceName = id.sourceName,
+        stackType = ty,
+        evaluationStrategy = de.cfaed.sigi.repl.eval(body),
+        compilationStrategy = StdLibDefinition(TFunDef(BuiltinFuncId(id.sourceName), ty, body))
+        )
+
+      case value => throw new IllegalStateException("Compiling builtin failed " + value)
+  }
+
 
   val ReplBuiltinSpecs: Set[BuiltinFunSpec] =
     Set(
@@ -151,30 +172,14 @@ package builtins {
         println(s"pp: $hd")
         Right(stack)
     }
-    val apply = fun("apply", {
-      // apply   : ('S ('S -> 'R) -> 'R)
-      val row = KRowVar.rowVarGenerator()
-      val S = row()
-      val R = row()
-      StackType(consumes = List(S, KFun(StackType(List(S), List(R)))), produces = List(R))
-    }) { t =>
-      env =>
-        env.stack match
-          // here we assume the term is well-typed, and so the fun is compatible with the rest of the stack.
-          case VFun(_, _, fundef) :: rest => fundef(env.copy(stack = rest))
-          case _ => Left(SigiEvalError.stackTypeError(t, env))
-    }
-    val compose = stackFun("compose", {
-      // apply   : ('A -> 'B) ('B -> 'C) -> ('A -> 'C)
-      val row = KRowVar.rowVarGenerator()
-      val (a, b, c) = (row(), row(), row())
-      StackType(consumes = List(KFun(StackType.aToB(a, b)), KFun(StackType.aToB(b, c))),
-                produces = List(KFun(StackType.aToB(a, c))))
-    }) {
-      // here we assume the term is well-typed, and so the fun is compatible with the rest of the stack.
-      case VFun(_, StackType(b, c), bToCDef) :: VFun(_, StackType(a, b2), aToBDef) :: rest if b == b2 =>
-        Right(VFun(None, StackType(a, c), { env => aToBDef(env).flatMap(bToCDef) }) :: rest)
-    }
+    // apply a function value
+    val apply = stdLibFun()("let apply = -> \\f; f ;;")
+    // compose the two functions at the top of the stack
+    val compose = stdLibFun()("let compose = -> \\ab, \\bc; { ab bc } ;;")
+    // swap top elements
+    val swap = stdLibFun()("let swap = -> a, b; b a ;;")
+    // quote top of the stack
+    val quote = stdLibFun()("let quote = -> a; { a } ;;")
 
 
     Set(
@@ -202,8 +207,6 @@ package builtins {
       boolUnaryOp("unary_!", !_),
 
       // These are core function. Also see list of cat builtins: https://github.com/cdiggins/cat-language
-      // TODO compose : ('S ('B -> 'C) ('A -> 'B) -> 'S ('A -> 'C))
-      //      while   : ('S ('S -> 'R bool) ('R -> 'S) -> 'S)
       apply,
       compose,
       pop,
@@ -211,14 +214,8 @@ package builtins {
       cond,
       pp,
       pass,
-      // swap top elements
-      stackFun("swap", StackType.generic2((ta, tb) => StackType(consumes = List(ta, tb), produces = List(tb, ta)))) {
-        case a :: b :: tl => Right(b :: a :: tl)
-      },
-      // quote top of the stack
-      stackFun("quote", StackType.generic1(ta => StackType(consumes = List(ta), produces = List(KFun(StackType.pushOne(ta)))))) {
-        case a :: tl => Right(VFun(Some("quote"), StackType.generic1(StackType.pushOne), env => Right(env.push(a))) :: tl)
-      },
+      swap,
+      quote,
 
       stackFun("show", StackType.generic1(a => StackType(consumes = List(a))),
                compilationStrategy = mlirFwdDeclaration) {

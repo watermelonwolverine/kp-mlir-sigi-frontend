@@ -241,13 +241,17 @@ case class MlirSymbol(name: String) {
           renderPush(ty, cstId)
 
         // just pushing one item
-        case TFunApply(StackType(Nil, List(ty)), binding: StackValueId) =>
+        case TFunApply(StackType(Nil, List(ty)), binding@StackValueId(name, false, _)) =>
           localSymEnv.get(binding) match
-            case Some(LocalSymDesc(_, mlirId, _)) => renderPush(ty, mlirId, comment = s"push ${binding.sourceName}")
-            case None =>
-              // todo report error in compiler
-              val errId = envIdGen.next()
-              println(s"$errId = sigi.error $envId, {msg=\"undefined name '${binding.sourceName}'\"}")
+            case Some(LocalSymDesc(_, mlirId, _)) => renderPush(ty, mlirId, comment = s"push $name")
+            case None => throw IllegalStateException(s"Unknown stack symbol: $binding")
+
+        // apply a function value captured from the stack
+        case TFunApply(ty, binding@StackValueId(name, true, _)) =>
+          localSymEnv.get(binding) match
+            case Some(LocalSymDesc(_, mlirId, _)) =>
+              println(s"${envIdGen.next()} = closure.call $mlirId ($envId) : $ClosureT // call $name: $ty")
+            case None => throw IllegalStateException(s"Unknown stack symbol: $binding")
 
         // builtin binary arithmetic ops and comparisons
         case TFunApply(StackType(List(a@(KInt | KBool), b), List(c)), id: BuiltinFuncId) if a == b && BuiltinIntOps.contains(id) =>
@@ -282,13 +286,6 @@ case class MlirSymbol(name: String) {
         case TFunApply(StackType(List(a), _), BuiltinFuncId("pop")) =>
           renderPop(a, comment = "pop intrinsic")
 
-        case TFunApply(StackType(List(a, b), _), BuiltinFuncId("swap")) =>
-          println(s"// swap intrinsic")
-          val popb = renderPop(b)
-          val popa = renderPop(a)
-          renderPush(b, popb)
-          renderPush(a, popa)
-
         // cond intrinsic
         case TFunApply(StackType(List(KBool, a, b), List(c)), BuiltinFuncId("cond")) if a == b && b == c =>
           val ty = mlirType(c)
@@ -304,14 +301,6 @@ case class MlirSymbol(name: String) {
                |  scf.yield $popElse: $ty
                |}""".stripMargin)
           renderPush(ty, resultId)
-
-        // higher-order function.
-        case TFunApply(ty, BuiltinFuncId("apply")) =>
-          println(s"// apply $ty")
-          val pop = makePop(MlirBuilder.ClosureT)
-          renderOp(pop)
-          val nextEnv = envIdGen.next()
-          println(s"$nextEnv = closure.call ${pop.outVal} (${pop.outEnv}) : ${MlirBuilder.ClosureT}")
 
         // general case of function calls.
         //  todo monomorphise generic calls, make sure all terms are ground
@@ -451,7 +440,8 @@ case class MlirSymbol(name: String) {
 
     for ((id, fun) <- module.stdFunctions.toBuffer.sortBy(_._1)) {
       fun.compilationStrategy match
-        case StdLibDefinition(fun) => // todo need monomorphization // builder.emitFunction(fun)
+        case StdLibDefinition(fun) => builder.emitFunction(fun)
+        // todo need monomorphization
         case MlirDefinition(definition) => builder.println(definition(id.mlirName).stripIndent())
         case FrontendIntrinsic => // do nothing, will be handled here
     }

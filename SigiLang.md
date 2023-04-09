@@ -207,6 +207,8 @@ swap: 'a, 'b -> 'b, 'a
 cond: bool, 'a, 'a -> 'a
 # Invoke a function value that is at the top of the stack
 apply: 'S, ('S -> 'R) -> 'R
+# Compose the two functions on the top of the stack
+compose: ('A -> 'B), ('B -> 'C) -> ('A -> 'C)
 # Quote the value on top of the stack
 quote: 'a -> (-> 'a)
 # Pop the top of the stack and print it with a newline

@@ -70,10 +70,12 @@ package ast {
                      val isFunction: Boolean,
                      override val filePos: FilePos) extends PositionedFuncId {
     def sourceRepr: String = if isFunction then s"\\$sourceName" else sourceName
+
+    override def toString: String = sourceRepr + " at " + filePos
   }
 
   object StackValueId {
-    def unapply(a: FuncId): Option[(String, Boolean, FilePos)] = a match
+    def unapply(a: StackValueId): Option[(String, Boolean, FilePos)] = a match
       case s: StackValueId => Some((s.sourceName, s.isFunction, s.filePos))
       case _ => None
   }
@@ -301,11 +303,15 @@ package ast {
       this (code, expr).flatMap(e => validate(e).toLeft(e))
     }
 
+    def parseFunDef(code: String): Either[SigiCompilationError, KFunDef] = {
+      this (code, funDef)
+    }
+
     def parseFunType(code: String): Either[SigiCompilationError, AFunType] = {
       this (code, funTy)
     }
 
-    def parseAndResolveFunType(scope:TypingScope)(code: String): Either[SigiCompilationError, StackType] = {
+    def parseAndResolveFunType(scope: TypingScope)(code: String): Either[SigiCompilationError, StackType] = {
       parseFunType(code).flatMap(types.resolveFunType(scope)).map(_.stackTy)
     }
 
