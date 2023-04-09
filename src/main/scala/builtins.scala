@@ -9,36 +9,52 @@ package builtins {
   import types.*
   import repl.*
 
+  import de.cfaed.sigi.debug.NoopLogger
+
   import scala.collection.immutable.List
 
 
   type ReplEvalFunction = Env => EvalResult
 
-  sealed class BuiltinCompilationStrategy
+  sealed trait CompilationStrategy
 
   /** This builtin is eliminated in the frontend by [[emitmlir]]. */
-  case object FrontendIntrinsic extends BuiltinCompilationStrategy
+  case object FrontendIntrinsic extends CompilationStrategy
 
-  case class StdLibDefinition(
+  case class CompileFunctionDefinition(
     definition: TFunDef
-  ) extends BuiltinCompilationStrategy
+  ) extends CompilationStrategy
 
-  case class MlirDefinition(
+  case class EmitMlirDefinition(
     definition: String => String
-  ) extends BuiltinCompilationStrategy
+  ) extends CompilationStrategy
 
 
   case class BuiltinFunSpec(
     surfaceName: String,
     stackType: StackType,
     evaluationStrategy: ReplEvalFunction,
-    compilationStrategy: BuiltinCompilationStrategy
+    compilationStrategy: CompilationStrategy
   ) {
     val id: BuiltinFuncId = BuiltinFuncId(surfaceName)
 
     def asValue: VFun = VFun(Some(surfaceName), stackType, evaluationStrategy)
 
     def asVarBinding: VarBinding = VarBinding(id, KFun(stackType))
+  }
+
+  object BuiltinFuncIdWithSpec {
+    /** Convenience extractor to get the spec in one go. */
+    def unapply(id: BuiltinFuncId): (String, BuiltinFunSpec) =
+      (id.sourceName,
+        builtins.BuiltinSpecs.find(_.id == id).get)
+  }
+
+  object BuiltinWithCompilStrategy {
+    /** Convenience extractor to get the spec in one go. */
+    def unapply(id: BuiltinFuncId): Option[(String, CompilationStrategy)] = id match
+      case BuiltinFuncIdWithSpec(name, BuiltinFunSpec(_, _, _, compil)) => Some(name, compil)
+      case _ => None
   }
 
   private def genericCmpOp(name: String, negated: Boolean): BuiltinFunSpec = {
@@ -89,7 +105,7 @@ package builtins {
     }
   }
 
-  private def fun(name: String, stackType: StackType, comp: BuiltinCompilationStrategy = FrontendIntrinsic)
+  private def fun(name: String, stackType: StackType, comp: CompilationStrategy = FrontendIntrinsic)
                  (definition: StackType => Env => EvalResult): BuiltinFunSpec = {
     BuiltinFunSpec(
       surfaceName = name,
@@ -99,7 +115,7 @@ package builtins {
       )
   }
 
-  private def stackFun(name: String, stackType: StackType, compilationStrategy: BuiltinCompilationStrategy = FrontendIntrinsic)
+  private def stackFun(name: String, stackType: StackType, compilationStrategy: CompilationStrategy = FrontendIntrinsic)
                       (definition: PartialFunction[List[KValue], Either[SigiEvalError, List[KValue]]]): BuiltinFunSpec = {
     fun(name, stackType, compilationStrategy) { ty =>
       env =>
@@ -108,7 +124,7 @@ package builtins {
     }
   }
   private def stdLibFun(funsInScope: BuiltinFunSpec*)(code: String): BuiltinFunSpec = {
-    val typingScope = TypingScope(funsInScope.map(f => f.surfaceName -> f.asVarBinding).toMap, datamodel.TypeDescriptor.Predefined)
+    val typingScope = TypingScope(funsInScope.map(f => f.surfaceName -> f.asVarBinding).toMap, datamodel.TypeDescriptor.Predefined)(using NoopLogger)
 
     val result = for {
       tree <- new ast.SigiParser().parseFunDef(code)
@@ -120,7 +136,7 @@ package builtins {
         surfaceName = id.sourceName,
         stackType = ty,
         evaluationStrategy = de.cfaed.sigi.repl.eval(body),
-        compilationStrategy = StdLibDefinition(TFunDef(BuiltinFuncId(id.sourceName), ty, body))
+        compilationStrategy = CompileFunctionDefinition(TFunDef(BuiltinFuncId(id.sourceName), ty, body))
         )
 
       case value => throw new IllegalStateException("Compiling builtin failed " + value)
@@ -144,7 +160,7 @@ package builtins {
 
   val BuiltinSpecs: Set[BuiltinFunSpec] = {
     // this is a forward declaration, the dialect should do something with it.
-    val mlirFwdDeclaration = MlirDefinition(name => s"func.func private @\"$name\"(!sigi.stack) -> !sigi.stack")
+    val mlirFwdDeclaration = EmitMlirDefinition(name => s"func.func private $name(!sigi.stack) -> !sigi.stack")
 
     val cond = // select one of two values
       stackFun("cond", StackType.generic1(ta => StackType(consumes = List(KBool, ta, ta), produces = List(ta))),

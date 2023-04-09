@@ -10,8 +10,8 @@ package debug {
 
   import scala.io.AnsiColor
 
-  val debugTypeInfLogger =
-    NoopLogger
+  /** This implicit instance fills in the blanks in the entire frontend. */
+  given TypeInfLogger = NoopLogger
   //    DebugTypeInfLogger()
 
   class Coloring private(val useColors: Boolean) extends scala.io.AnsiColor {

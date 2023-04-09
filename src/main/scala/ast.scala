@@ -12,6 +12,7 @@ package ast {
   import tokens.*
   import types.{KDataType, KFun, KPrimitive, StackType, TypedExpr, TypingScope}
 
+  import de.cfaed.sigi.builtins.BuiltinFunSpec
   import de.cfaed.sigi.tokens
 
   import java.util.Comparator
@@ -26,7 +27,7 @@ package ast {
     */
   sealed trait KNode extends Positional
 
-  case class KFile(funs: List[KFunDef], mainExpr: KExpr)
+  case class KFile(sourceFileName: String, funs: List[KFunDef], mainExpr: KExpr)
 
 
   implicit object FuncIdOrdering extends Ordering[FuncId] {
@@ -40,6 +41,11 @@ package ast {
           if a.filePos.position < b.filePos.position then -1
           else if a.filePos.position == b.filePos.position then a.sourceName.compareTo(b.sourceName)
           else 1
+        case (FuncInstantiationId(a, _), FuncInstantiationId(b, _)) => compare(a, b)
+        case (FuncInstantiationId(orig, _), other) if compare(orig, other) != 0 => compare(orig, other)
+        case (other, FuncInstantiationId(orig, _)) if compare(orig, other) != 0 => compare(orig, other)
+        case (_, _) => 0 // stable sorts wouldn't eliminate equal elements
+
   }
 
   /** Unique ID of a function. Uses reference equality.
@@ -58,7 +64,22 @@ package ast {
   }
 
   /** ID of a function that was written in a source file. */
-  class UserFuncId(override val sourceName: String, override val filePos: FilePos) extends EmittableFuncId with PositionedFuncId
+  class UserFuncId(override val sourceName: String, override val filePos: FilePos) extends EmittableFuncId with PositionedFuncId {
+
+    override def toString: String = s"UserFuncId($sourceName)"
+  }
+
+  object UserFuncId {
+    def unapply(id: UserFuncId): Some[(String, FilePos)] = Some(id.sourceName, id.filePos)
+  }
+
+  /** ID of a monomorphized function. It's an instantiation of another function. */
+  case class FuncInstantiationId(originalFunc: FuncId, instStackTy: StackType) extends EmittableFuncId {
+    override val sourceName: String = originalFunc.sourceName
+
+    def actualIdentifier: String = originalFunc.sourceName + "$" + instStackTy
+
+  }
 
   /** ID of a builtin function. This one uses name equality. */
   case class BuiltinFuncId(override val sourceName: String) extends EmittableFuncId {
@@ -263,7 +284,7 @@ package ast {
     }
 
     private def file: Parser[KFile] = rep(funDef) ~ expr <~ PHAT_SEMI.? ^^ {
-      case (funs: List[KFunDef]) ~ (expr: KExpr) => KFile(funs, expr)
+      case (funs: List[KFunDef]) ~ (expr: KExpr) => KFile(fileName, funs, expr)
     }
 
     // these validation methods only perform syntactic validation.

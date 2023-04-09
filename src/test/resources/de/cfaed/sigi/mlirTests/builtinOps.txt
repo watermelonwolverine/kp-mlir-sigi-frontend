@@ -1,11 +1,10 @@
 module {
-
     // __main__: ->
     func.func @__main__(%s0: !sigi.stack) -> !sigi.stack attributes {sigi.main} {
         %v1 = arith.constant 1: i32
         %s1 = sigi.push %s0, %v1: i32
         // -> x;
-        %s2, %v2_x = sigi.pop %s1: i32 // x
+        %s2, %v2_x = sigi.pop %s1: i32 // x: int
         %s3 = sigi.push %s2, %v2_x: i32 // push x
         %s4 = sigi.push %s3, %v2_x: i32 // push x
         // +
@@ -65,7 +64,7 @@ module {
         %v32 = arith.constant 1: i1
         %s43 = sigi.push %s42, %v32: i1
         // -> b;
-        %s44, %v33_b = sigi.pop %s43: i1 // b
+        %s44, %v33_b = sigi.pop %s43: i1 // b: bool
         %s45 = sigi.push %s44, %v33_b: i1 // push b
         // unary_!
         %v34 = arith.constant 1: i1

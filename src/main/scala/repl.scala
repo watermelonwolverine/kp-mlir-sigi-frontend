@@ -13,6 +13,7 @@ package repl {
 
   import scala.annotation.tailrec
 
+  import debug.given
 
   @main
   def repl(): Unit = {
@@ -125,8 +126,7 @@ package repl {
 
     export typesInScope.get as getType
 
-    def toTypingScope: TypingScope = TypingScope(bindingTypes, typesInScope,
-                                                 debug.debugTypeInfLogger)
+    def toTypingScope: TypingScope = TypingScope(bindingTypes, typesInScope)
   }
 
   object Env {

@@ -22,13 +22,17 @@ package types {
   /** Typed tree. */
   sealed trait TypedTree extends Positional
   sealed trait TypedStmt extends TypedTree
-  case class TFunDef(id: FuncId, ty: StackType, body: TypedExpr) extends TypedStmt
+  case class TFunDef(id: EmittableFuncId, ty: StackType, body: TypedExpr) extends TypedStmt
   case class TExprStmt(e: TypedExpr) extends TypedStmt
   case class TBlock(stmts: List[TypedStmt]) extends TypedStmt
+
   case class TModule(
+    sourceFileName: String,
     functions: Map[FuncId, TFunDef],
     mainExpr: TypedExpr
-  )
+  ) {
+    def getFunction(id: FuncId): Option[TFunDef] = functions.get(id)
+  }
 
   sealed trait TypedExpr extends TypedTree {
     def stackTy: StackType
@@ -89,7 +93,7 @@ package types {
     override def stackTy: StackType = StackType.pushOne(KFun(term.stackTy))
   }
 
-  case class TNameTopN(override val stackTy: StackType, names: List[StackValueId]) extends TypedExpr
+  case class TNameTopN(override val stackTy: StackType, ids: List[StackValueId]) extends TypedExpr
 
   /** Supertrait for KDataType and KRow[I]Var. */
   sealed trait KStackTypeItem {
@@ -243,6 +247,10 @@ package types {
     private def exists(f: KStackTypeItem => Boolean): Boolean =
       consumes.exists(_.exists(f)) || produces.exists(_.exists(f))
 
+    /** Whether this type declares some type variables. */
+    // todo should row vars really be considered here?
+    def isGeneric: Boolean = exists(t => t.isRowVarLike || t.isInstanceOf[KTypeVar])
+
     /** Introduce new trivial row variables if needed.
       * Turns `a -> b` into `'A, a -> 'A, b` if A and B
       * do not contain row variables.
@@ -372,6 +380,30 @@ package types {
   def unaryOpType(t: KDataType) = StackType(consumes = List(t), produces = List(t))
 
 
+  /** Given a ground callee type, and a generic callee type, infer
+    * a substitution that maps the type variables within the generic type
+    * to concrete data types found in the ground type.
+    *
+    * The ground callee type is known to be some instantiation of
+    * the generic type because that's how it was derived during type inference.
+    *
+    * @param groundTy  The ground callee type
+    * @param genericTy The generic callee type
+    */
+  def computeInstantiation(groundTy: StackType, genericTy: StackType)(using debug.TypeInfLogger): Either[SigiTypeError, TySubst] = {
+    if !genericTy.isGeneric then return Right(makeTySubst({ t => t })) // empty substitution
+
+    // otherwise infer the instantiations of each type var in the generic type
+    val ctx = new TypingCtx(implicitly)
+    val inferenceType = ctx.mapToIvars(genericTy)
+    ctx.unifyWithoutIvarConversion(groundTy, inferenceType)
+      .orElse(ctx.checkAllIvarsGround())
+      .toLeft({
+        ctx.groundSubst(true)
+      })
+  }
+
+
   private[types] class TypingCtx(private[types] val log: debug.TypeInfLogger) {
 
     private val myIvars = mutable.Set[KInferenceVar]()
@@ -420,8 +452,16 @@ package types {
     /** Replace type vars with fresh inference vars. */
     def mapToIvars(st: StackType): StackType = toIvarSubst.substStackType(st)
 
-    /** A ground substitution substitutes inference variables with their instantiation. */
+    /** Returns an error if the ivars registered on this context are not all instantiatable. */
+    def checkAllIvarsGround(): Option[SigiTypeError] = {
+      val freeIvars = myIvars.filter(_.instantiation == null)
+      if freeIvars.nonEmpty then
+        Some(SigiTypeError.ivarsShouldBeGround(freeIvars))
+      else
+        None
+    }
 
+    /** A ground substitution substitutes inference variables with their instantiation. */
     def groundSubst(eliminateIvars: Boolean): TySubst =
       new TySubst {
         private[this] val tvGen = KTypeVar.typeVarGenerator()
@@ -484,7 +524,7 @@ package types {
     def partialGround: TySubst = groundSubst(eliminateIvars = false)
 
 
-    private def unifyWithoutIvarConversion(a: StackType, b: StackType): Option[SigiTypeError] =
+    private[types] def unifyWithoutIvarConversion(a: StackType, b: StackType): Option[SigiTypeError] =
       unify(a.produces, b.produces).orElse(unify(a.consumes, b.consumes))
 
     def unify(a: StackType, b: StackType): Option[SigiTypeError] =
@@ -627,9 +667,9 @@ package types {
   }
   object TypingScope {
     def apply(varNs: BindingTypes,
-              typeNs: Map[String, datamodel.TypeDescriptor],
-              debugLogger: debug.TypeInfLogger = debug.NoopLogger): TypingScope =
-      new TypingScope(varNs, Map.empty, typeNs, TypingCtx(debugLogger))
+              typeNs: Map[String, datamodel.TypeDescriptor])
+             (using debug.TypeInfLogger): TypingScope =
+      new TypingScope(varNs, Map.empty, typeNs, TypingCtx(implicitly))
   }
 
 
@@ -658,7 +698,7 @@ package types {
         val fileEnv = env.addBindings(typedFuns.map { case (id, fun) => VarBinding(id, KFun(fun.ty)) })
         doValidation(fileEnv)(KExprStatement(file.mainExpr))
           .flatMap { case TExprStmt(te) => checkMainExprType(te).toLeft(te) }
-          .map(te => TModule(functions = typedFuns, mainExpr = te))
+          .map(te => TModule(sourceFileName = file.sourceFileName, functions = typedFuns, mainExpr = te))
     }
   }
 

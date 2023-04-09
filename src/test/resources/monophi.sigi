@@ -1,0 +1,13 @@
+
+
+let id: 'a -> 'a = -> x; x ;;
+
+let test0 =
+1
+id     // : int -> int, but the implementation is generic
+pop;;
+
+
+// should generate
+let idint: int -> int = -> x; x;;
+let test0_ = 1 idint pop;;

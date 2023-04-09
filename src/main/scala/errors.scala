@@ -36,6 +36,11 @@ sealed abstract class SigiError(private val msg: String) extends Positional {
     causes += sigiError
     this
   }
+
+  def addCauses(sigiError: IterableOnce[SigiError]): this.type = {
+    causes ++= sigiError
+    this
+  }
 }
 
 class SigiCompilationError(msg: String) extends SigiError(msg) {
@@ -73,9 +78,10 @@ class SigiTypeError(msg: String) extends SigiCompilationError(msg) {
   override protected def errorType: String = "Type error"
 }
 
-given typeErrorMerger: ((SigiTypeError, List[SigiTypeError]) => SigiTypeError) = {
-  (a, as) => SigiTypeError((a :: as).mkString("\n"))
-}
+given typeErrorMerger: ((SigiTypeError, List[SigiTypeError]) => SigiTypeError) = _.addCauses(_)
+
+given compilErrorMerger: ((SigiCompilationError, List[SigiCompilationError]) => SigiCompilationError) = _.addCauses(_)
+
 
 object SigiTypeError {
 
@@ -85,6 +91,10 @@ object SigiTypeError {
 
   def bodyTypeIsNotCompatibleWithSignature(bodyTy: StackType, sig: StackType, funcName: String): SigiTypeError = SigiTypeError(
     s"Type of the body of $funcName is not compatible with declared type: expected $sig, got $bodyTy"
+    )
+
+  def ivarsShouldBeGround(ivars: IterableOnce[KInferenceVar]): SigiTypeError = SigiTypeError(
+    s"Could not ground the following ivars: $ivars"
     )
 
   def illegalFwdReferenceToFunWithInferredType(funcId: FuncId): SigiTypeError = SigiTypeError(

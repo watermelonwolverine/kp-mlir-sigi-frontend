@@ -1,7 +1,7 @@
 module {
     func.func private @"sigi::show"(!sigi.stack) -> !sigi.stack
     // double: int -> int
-    func.func @double(%s0: !sigi.stack) -> !sigi.stack {
+    func.func private @double(%s0: !sigi.stack) -> !sigi.stack {
         // dup intrinsic
         %s1, %v1 = sigi.pop %s0: i32
         %s2 = sigi.push %s1, %v1: i32

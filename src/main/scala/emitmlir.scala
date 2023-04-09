@@ -14,13 +14,15 @@ import scala.collection.mutable
 
 package emitmlir {
 
-  import de.cfaed.sigi.builtins.{BuiltinFunSpec, FrontendIntrinsic, MlirDefinition, StdLibDefinition}
+  import de.cfaed.sigi.builtins.{BuiltinFunSpec, FrontendIntrinsic, EmitMlirDefinition, CompileFunctionDefinition}
   import de.cfaed.sigi.emitmlir.MlirBuilder.{BuiltinIntOps, BuiltinUnaryOps, ClosureT, TargetFunType}
 
   import scala.collection.immutable.List
   import scala.collection.mutable.ListBuffer
   import scala.io.Source
   import scala.sys.exit
+
+  import debug.given
 
   sealed trait MlirValue {
 
@@ -131,18 +133,24 @@ case class MlirSymbol(name: String) {
       out.print(str.indent(indent * 4))
     }
 
+    private def getSymbol(id: FuncId): MlirSymbol = MlirSymbol(nameDeduper.getMlirName(id))
+
+    def emitMlirImpl(id: FuncId, mlirDefinition: EmitMlirDefinition): Unit = {
+      val sym = getSymbol(id)
+      println(mlirDefinition.definition(sym.toString).stripIndent())
+    }
+
     def emitFunction(funDef: TFunDef, isMain: Boolean = false): Unit = {
       resetLocals()
-      val TFunDef(id0, ty, body) = funDef
-      assert(id0.isInstanceOf[EmittableFuncId], s"Unexpected: cannot emit function $funDef")
-      val id = id0.asInstanceOf[EmittableFuncId]
+      val TFunDef(id, ty, body) = funDef
 
-      val funSym = MlirSymbol(nameDeduper.getMlirName(id))
+      val funSym = getSymbol(id)
+      val visibility = if !id.isInstanceOf[UserFuncId] then " private" else ""
 
       println("")
       println(s"// ${id.sourceName}: $ty")
       val attrs = if isMain then " attributes {sigi.main}" else ""
-      println(s"func.func $funSym(${envIdGen.cur}: !sigi.stack) -> !sigi.stack$attrs {")
+      println(s"func.func$visibility $funSym(${envIdGen.cur}: !sigi.stack) -> !sigi.stack$attrs {")
       indent += 1
       this.emitExpr(body)
       println(s"return ${envIdGen.cur}: !sigi.stack")
@@ -345,7 +353,7 @@ case class MlirSymbol(name: String) {
         case TNameTopN(stackTy, names) =>
           println(s"// ${t.erase}")
           for ((id, ty) <- names.zip(stackTy.consumes)) {
-            val popVal = renderPop(ty, valueNameSuffix = s"_${id.sourceName}", comment = id.sourceName)
+            val popVal = renderPop(ty, valueNameSuffix = s"_${id.sourceName}", comment = id.sourceName + ": " + ty)
             val desc = LocalSymDesc(id = id, mlirName = popVal, mlirType = mlirType(ty))
             localSymEnv.put(id, desc)
           }
@@ -422,49 +430,20 @@ case class MlirSymbol(name: String) {
 
   */
 
-  private case class EmittableModule(
-    sourceFileName: String,
-    stdFunctions: Map[BuiltinFuncId, BuiltinFunSpec],
-    userFunctions: Map[FuncId, TFunDef],
-    mainExpr: TypedExpr
-  ) {
-    val mainFun: TFunDef = {
-      val mainFuncId = new UserFuncId("__main__", FilePos(mainExpr.pos, sourceFileName))
-      TFunDef(mainFuncId, mainExpr.stackTy, mainExpr)
-    }
-  }
-
-  private def emitModule(out: PrintStream)(module: EmittableModule): Unit = {
+  private def emitModule(out: PrintStream)(module: monomorphize.EmittableModule): Unit = {
     out.println("module {")
     val builder = new MlirBuilder(out, indent = 1)
 
-    for ((id, fun) <- module.stdFunctions.toBuffer.sortBy(_._1)) {
-      fun.compilationStrategy match
-        case StdLibDefinition(fun) => builder.emitFunction(fun)
-        // todo need monomorphization
-        case MlirDefinition(definition) => builder.println(definition(id.mlirName).stripIndent())
+    for ((id, compil) <- module.functions.toBuffer.sortBy(_._1)) {
+      compil match
+        case CompileFunctionDefinition(fun) => builder.emitFunction(fun)
+        case compil@EmitMlirDefinition(_) => builder.emitMlirImpl(id, compil)
         case FrontendIntrinsic => // do nothing, will be handled here
-    }
-
-    for ((_, fun) <- module.userFunctions) {
-      builder.emitFunction(fun)
     }
 
     builder.emitFunction(module.mainFun, isMain = true)
 
-    // todo missing glue code
-
     out.println("}")
-  }
-
-  private def getUsedStdLibFuns(module: TModule): Set[BuiltinFunSpec] = {
-    (module.functions.map(_._2.body) ++ List(module.mainExpr))
-      .foldLeft(Set[BuiltinFunSpec]()) { (acc, te) =>
-        te.reduce(acc) {
-          case (TFunApply(_, id: BuiltinFuncId), set) =>
-            builtins.BuiltinSpecs.find(_.id == id).map(set + _).getOrElse(set)
-        }
-      }
   }
 
   def parseSigiAndEmitMlir(out: PrintStream)(in: Source): Unit = {
@@ -473,18 +452,13 @@ case class MlirSymbol(name: String) {
     val res = for {
       parsed <- new SigiParser(in.descr).parseFile(in.mkString)
       module <- types.typeFile(env)(parsed)
-    } yield {
-      val usedStdLibFuns: Map[BuiltinFuncId, BuiltinFunSpec] = getUsedStdLibFuns(module).map(f => f.id -> f).toMap
-      // todo monomorphize here
-      //  recurse through the main expr.
-      //  If any called fun is generic, ground it based on the types at the call site.
-      //  Collect non-generic and monomorphized funs for emission.
-      //  You can't emit a generic fun or a generic quote.
-      emitModule(out)(EmittableModule(sourceFileName = in.descr, usedStdLibFuns, module.functions, module.mainExpr))
-    }
+      emittable <- monomorphize.monomorphize(module)
+    } yield emitModule(out)(emittable)
 
     res match
-      case Left(err) => println(err)
+      case Left(err) =>
+        System.err.println("Failed!")
+        System.err.println(err)
       case _ =>
   }
 
