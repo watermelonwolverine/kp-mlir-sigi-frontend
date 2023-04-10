@@ -32,7 +32,7 @@ just installRequirementsWithSdkman
 
 After running `just b`, the following commands are available:
 - `just repl`: run the interactive Sigi REPL
-- `just sigi-to-mlir *ARGS`: execute the `sigi-to-mlir` utility with given arguments (output is on stdout)
-  - `sigi-to-mlir -` takes input from standard input
-  - `sigi-to-mlir fileName.sigi` takes input from a file
+- `just sigiToMlir *ARGS`: execute the `sigi-to-mlir` utility with given arguments (output is on stdout)
+  - `sigiToMlir -` takes input from standard input
+  - `sigiToMlir fileName.sigi` takes input from a file
   - `just exprToMlir "sigi code"`: convenience wrapper to compile a single Sigi expression

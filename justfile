@@ -13,7 +13,7 @@ alias b := build
 exprToMlir EXPR:
     echo "{{EXPR}}" | {{stagedir}}/sigi-to-mlir -
 
-sigi-to-mlir *ARGS:
+sigiToMlir *ARGS:
     {{stagedir}}/sigi-to-mlir {{ARGS}}
 
 repl:
