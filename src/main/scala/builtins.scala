@@ -160,7 +160,7 @@ package builtins {
 
   val BuiltinSpecs: Set[BuiltinFunSpec] = {
     // this is a forward declaration, the dialect should do something with it.
-    val mlirFwdDeclaration = EmitMlirDefinition(name => s"func.func private $name(!sigi.stack) -> !sigi.stack")
+    val mlirFwdDeclaration = EmitMlirDefinition(name => s"func.func private $name(!sigi.stack) -> !sigi.stack attributes { sigi.builtinfunc }")
 
     val cond = // select one of two values
       stackFun("cond", StackType.generic1(ta => StackType(consumes = List(KBool, ta, ta), produces = List(ta))),

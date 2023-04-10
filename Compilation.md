@@ -23,6 +23,6 @@ At present the only value types supported are `i1` (boolean), `i32` (int), and `
 ## Attributes
 
 - `sigi.main` identifies the main function of the compiled Sigi program. This attribute should be present on a `func.func` that has signature `(!sigi.stack) -> sigi.stack`. It can be used to generate wrapper code (stack initialization and cleanup) in the implementation dialect while lowering `sigi`.
-
+- `sigi.builtinfunc` identifies a `func` declaration which was emitted by the frontend to represent a call to a function in the sigi runtime. The dialect can map those functions to however they want to implement them.
 
 
