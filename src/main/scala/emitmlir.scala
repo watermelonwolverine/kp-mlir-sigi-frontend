@@ -297,6 +297,9 @@ case class MlirSymbol(name: String) {
         case TFunApply(StackType(List(a), _), BuiltinFuncId("pop")) =>
           renderPop(a, comment = "pop intrinsic")
 
+        case TFunApply(_, BuiltinFuncId("pass")) =>
+          // this is a noop
+
         // cond intrinsic
         case TFunApply(StackType(List(KBool, a, b), List(c)), BuiltinFuncId("cond")) if a == b && b == c =>
           val ty = mlirType(c)
@@ -449,7 +452,7 @@ case class MlirSymbol(name: String) {
     out.println("}")
   }
 
-  def parseSigiAndEmitMlir(out: PrintStream)(in: Source)(using debug.TypeInfLogger): Unit = {
+  def parseSigiAndEmitMlir(out: PrintStream)(in: Source)(using debug.TypeInfLogger): Option[SigiCompilationError] = {
 
     val env = Env.Default.toTypingScope
     val res = for {
@@ -458,17 +461,18 @@ case class MlirSymbol(name: String) {
       emittable <- monomorphize.monomorphize(module)
     } yield emitModule(out)(emittable)
 
-    res match
-      case Left(err) =>
-        System.err.println("Failed!")
-        System.err.println(err)
-      case _ =>
+    res.left.toOption
   }
 
   @main
-  def sigiToMlir(fileName: String): Unit =
+  def sigiToMlir(fileName: String): Int =
     val source = fileName match
       case "-" => io.Source.stdin
       case fileName => io.Source.fromFile(fileName)
-    parseSigiAndEmitMlir(System.out)(source)(using NoopLogger)
+    parseSigiAndEmitMlir(System.out)(source)(using NoopLogger) match
+      case Some(err) =>
+        System.err.println("Failed!")
+        System.err.println(err)
+        1
+      case _ => 0
 }

@@ -5,7 +5,7 @@ package de.cfaed.sigi
 package types {
 
   import ast.*
-  import repl.Env
+  import repl.{Env, VFun}
   import types.StackType.canonicalize
 
   import com.sun.tools.classfile.TypeAnnotation.TargetType
@@ -28,6 +28,8 @@ package types {
 
   case class TFunDef(id: EmittableFuncId, ty: StackType, body: TypedExpr, scope: TypingCtx => TypingScope) extends TypedStmt {
     def toVarBinding: VarBinding = VarBinding(id, KFun(ty))
+
+    def toEvaluatable: VFun = VFun(Some(id.sourceName), ty, repl.eval(body))
   }
 
   case class TExprStmt(e: TypedExpr) extends TypedStmt

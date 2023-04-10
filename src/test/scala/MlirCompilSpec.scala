@@ -26,7 +26,8 @@ class MlirCompilSpec extends AnyFunSuite {
 
       val out = ByteArrayOutputStream()
 
-      emitmlir.parseSigiAndEmitMlir(PrintStream(out))(io.Source.fromInputStream(source))(using NoopLogger)
+      val error = emitmlir.parseSigiAndEmitMlir(PrintStream(out))(io.Source.fromInputStream(source))(using NoopLogger)
+      assertResult(None)(error)
 
       assertResult(normText(expectedStr))(normText(out.toString))
     }
@@ -40,5 +41,6 @@ class MlirCompilSpec extends AnyFunSuite {
   doTest("monophi")
   doTest("monophi2")
   doTest("generic1")
+  doTest("loopWithPass")
 
 }

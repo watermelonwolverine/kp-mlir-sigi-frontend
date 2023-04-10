@@ -16,6 +16,9 @@ exprToMlir EXPR:
 sigiToMlir *ARGS:
     {{stagedir}}/sigi-to-mlir {{ARGS}}
 
+interpretSigi *ARGS:
+    {{stagedir}}/interpret-sigi {{ARGS}}
+
 repl:
     {{stagedir}}/repl
 

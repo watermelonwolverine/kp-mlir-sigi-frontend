@@ -1,5 +1,5 @@
 module {
-    func.func private @"sigi::pp"(!sigi.stack) -> !sigi.stack
+    func.func private @"sigi::pp"(!sigi.stack) -> !sigi.stack attributes { sigi.builtinfunc }
     // show: bool ->
     func.func private @show(%s0: !sigi.stack) -> !sigi.stack {
         %s1 = func.call @"sigi::pp"(%s0) : (!sigi.stack) -> !sigi.stack // bool -> bool

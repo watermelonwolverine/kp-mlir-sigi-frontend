@@ -12,8 +12,29 @@ package repl {
   import de.cfaed.sigi.builtins.BuiltinFunSpec
 
   import scala.annotation.tailrec
+  import debug.{NoopLogger, given}
 
-  import debug.given
+  @main
+  def interpretSigi(fileName: String): Unit = {
+    val source = fileName match
+      case "-" => io.Source.stdin
+      case fileName => io.Source.fromFile(fileName)
+
+    val env = Env.Default
+    val result: Either[SigiError, Unit] = for {
+      parsed <- new SigiParser(fileName = source.descr).parseFile(source.getLines().mkString("\n"))
+      typed <- types.typeFile(env.toTypingScope)(parsed)
+      newEnv = {
+        env.copy(vars = env.vars ++ typed.functions.map(tup => tup._1 -> tup._2.toEvaluatable))
+      }
+      _ <- eval(typed.mainExpr)(newEnv)
+    } yield ()
+
+    result match
+      case Left(err) =>
+        System.err.println(err)
+      case _ =>
+  }
 
   @main
   def repl(): Unit = {

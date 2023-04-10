@@ -1,0 +1,22 @@
+
+let intfunc = (*) 2 (+);;
+let fib_tailrec: int -> int =
+  1 1 fib_tailrec_helper;;
+
+let fib_tailrec_helper: int, int, int -> int =
+  -> n, a, b;
+  if (n = 0)   a
+  elif (n = 1) b
+  else          (n - 1) b (a + b) fib_tailrec_helper
+  ;;
+
+
+let fibloop: int, int -> =
+    -> i, running;
+    if (i = 0) pass
+    else
+        i show
+        running fib_tailrec show
+        (i - 1) (running * 10) fibloop;;
+
+10 10 fibloop
