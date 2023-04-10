@@ -4,6 +4,7 @@ import repl.Env
 import types.*
 
 import de.cfaed.sigi.ast.KFile
+import de.cfaed.sigi.debug.NoopLogger
 import org.scalatest.funsuite.AnyFunSuite
 
 import java.io.{ByteArrayOutputStream, PrintStream}
@@ -25,7 +26,7 @@ class MlirCompilSpec extends AnyFunSuite {
 
       val out = ByteArrayOutputStream()
 
-      emitmlir.parseSigiAndEmitMlir(PrintStream(out))(io.Source.fromInputStream(source))
+      emitmlir.parseSigiAndEmitMlir(PrintStream(out))(io.Source.fromInputStream(source))(using NoopLogger)
 
       assertResult(normText(expectedStr))(normText(out.toString))
     }
@@ -36,7 +37,7 @@ class MlirCompilSpec extends AnyFunSuite {
   doTest("intExpr")
   doTest("builtinOps")
   doTest("fibonacci")
-  // todo, generic funs are not supported yet
-  //  doTest("generic1")
+  doTest("monophi")
+  doTest("generic1")
 
 }

@@ -3,8 +3,8 @@ package de.cfaed.sigi
 import repl.Env
 import types.*
 
+import de.cfaed.sigi.debug.NoopLogger
 import org.scalatest.Inside.inside
-
 import org.scalatest.funsuite.AnyFunSuite
 
 /**
@@ -18,7 +18,7 @@ class TypeInfSpec extends AnyFunSuite {
 
       val result: Either[SigiError, StackType] = for {
         parsed <- new ast.SigiParser().parseExpr(term)
-        typed <- types.assignType(Env.Default.toTypingScope)(parsed)
+        typed <- types.assignType(Env.Default.toTypingScope(using debug.NoopLogger))(parsed)
       } yield typed.stackTy
 
       assertResult(Right(ty))(result.map(_.toString))
@@ -94,11 +94,11 @@ class TypeInfSpec extends AnyFunSuite {
     test(s"Type $ty should be $descr with signature type $sig") {
 
       val parser = new ast.SigiParser()
-      val parseResolve = parser.parseAndResolveFunType(Env.Default.toTypingScope)
+      val parseResolve = parser.parseAndResolveFunType(Env.Default.toTypingScope(using NoopLogger))
       val result = for {
         tyParsed <- parseResolve(ty)
         sigParsed <- parseResolve(sig)
-        _ <- types.checkCompatible(tyParsed, sigParsed).toLeft(())
+        _ <- types.checkCompatible(tyParsed, sigParsed)(using NoopLogger).toLeft(())
       } yield ()
 
       inside(result)(expected)

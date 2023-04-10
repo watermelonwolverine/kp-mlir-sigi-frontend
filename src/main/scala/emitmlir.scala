@@ -14,15 +14,14 @@ import scala.collection.mutable
 
 package emitmlir {
 
-  import de.cfaed.sigi.builtins.{BuiltinFunSpec, FrontendIntrinsic, EmitMlirDefinition, CompileFunctionDefinition}
+  import de.cfaed.sigi.builtins.{BuiltinFunSpec, CompileFunctionDefinition, EmitMlirDefinition, FrontendIntrinsic}
   import de.cfaed.sigi.emitmlir.MlirBuilder.{BuiltinIntOps, BuiltinUnaryOps, ClosureT, TargetFunType}
 
   import scala.collection.immutable.List
   import scala.collection.mutable.ListBuffer
   import scala.io.Source
   import scala.sys.exit
-
-  import debug.given
+  import debug.{DebugTypeInfLogger, NoopLogger, given}
 
   sealed trait MlirValue {
 
@@ -122,7 +121,11 @@ case class MlirSymbol(name: String) {
       case KString => "!sigi.str"
       case KFun(_) => ClosureT
       case KList(item) => s"!sigi.list<${mlirType(item)}>"
-      case _ => throw new IllegalArgumentException(s"Cannot emit type with variable $ty")
+      // This case is for tvars that were not properly resolved
+      // by monomorphization. This is a bug of the frontend, but
+      // the better way to report it is to produce invalid code
+      // for now.
+      case _ => "!sigi.failed_inference"
 
     private def makeConstAttr[T](ty: KPrimitive[T], value: T): String = ty match
       case KInt => value.toString
@@ -142,7 +145,7 @@ case class MlirSymbol(name: String) {
 
     def emitFunction(funDef: TFunDef, isMain: Boolean = false): Unit = {
       resetLocals()
-      val TFunDef(id, ty, body) = funDef
+      val TFunDef(id, ty, body, _) = funDef
 
       val funSym = getSymbol(id)
       val visibility = if !id.isInstanceOf[UserFuncId] then " private" else ""
@@ -446,7 +449,7 @@ case class MlirSymbol(name: String) {
     out.println("}")
   }
 
-  def parseSigiAndEmitMlir(out: PrintStream)(in: Source): Unit = {
+  def parseSigiAndEmitMlir(out: PrintStream)(in: Source)(using debug.TypeInfLogger): Unit = {
 
     val env = Env.Default.toTypingScope
     val res = for {
@@ -467,5 +470,5 @@ case class MlirSymbol(name: String) {
     val source = fileName match
       case "-" => io.Source.stdin
       case fileName => io.Source.fromFile(fileName)
-    parseSigiAndEmitMlir(System.out)(source)
+    parseSigiAndEmitMlir(System.out)(source)(using NoopLogger)
 }

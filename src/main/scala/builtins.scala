@@ -132,11 +132,11 @@ package builtins {
     } yield typed
 
     result match
-      case Right(TFunDef(id, ty, body)) => BuiltinFunSpec(
+      case Right(TFunDef(id, ty, body, scope)) => BuiltinFunSpec(
         surfaceName = id.sourceName,
         stackType = ty,
         evaluationStrategy = de.cfaed.sigi.repl.eval(body),
-        compilationStrategy = CompileFunctionDefinition(TFunDef(BuiltinFuncId(id.sourceName), ty, body))
+        compilationStrategy = CompileFunctionDefinition(TFunDef(BuiltinFuncId(id.sourceName), ty, body, scope))
         )
 
       case value => throw new IllegalStateException("Compiling builtin failed " + value)

@@ -3,6 +3,7 @@ package de.cfaed.sigi
 import scala.collection.mutable.ListBuffer
 
 extension[A] (self: A)
+  /** Print and pass. Useful for debugging. */
   def pp(hint: String = ""): A = {
     val prefix = if hint.nonEmpty then s"$hint: " else ""
     val selfToStr = if self == null then "null" else self.toString

@@ -27,7 +27,7 @@ package repl {
         println(e.stackTy)
         println(s"$consumed -> $produced".trim)
 
-      case TFunDef(id, ty, _) => println(s"Defined function ${id.sourceName}: $ty")
+      case TFunDef(id, ty, _, _) => println(s"Defined function ${id.sourceName}: $ty")
       case TBlock(st) =>
         // this does not really work as the environments are different between each statement.
         // but at the same time the repl never parses a block so it does not matter.
@@ -126,7 +126,7 @@ package repl {
 
     export typesInScope.get as getType
 
-    def toTypingScope: TypingScope = TypingScope(bindingTypes, typesInScope)
+    def toTypingScope(using debug.TypeInfLogger): TypingScope = TypingScope(bindingTypes, typesInScope)
   }
 
   object Env {
@@ -162,7 +162,7 @@ package repl {
       stmts.foldLeft[EvalResult](Right(env)) { (env, newStmt) =>
         env.flatMap(eval(newStmt))
       }
-    case TFunDef(id, ty, body) =>
+    case TFunDef(id, ty, body, _) =>
       Right(
         env.copy(vars = env.vars.updated(id, VFun(Some(id.sourceName), ty, eval(body))))
       )

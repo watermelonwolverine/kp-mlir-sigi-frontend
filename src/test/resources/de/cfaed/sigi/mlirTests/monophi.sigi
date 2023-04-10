@@ -1,0 +1,16 @@
+
+
+let id: 'a -> 'a = -> x; x ;;
+
+let test0 =
+1
+id     # : int -> int, but the implementation is generic
+pop;;
+
+let higherOrder: ('A -> 'B) -> ('A -> 'B, bool) =
+    { true } compose;;
+
+let test1 = { 1 2 } higherOrder apply ;;
+
+test0 test1
+

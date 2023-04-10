@@ -1,0 +1,68 @@
+module {
+    // apply: (-> int, int, bool) -> int, int, bool
+    func.func private @apply(%s0: !sigi.stack) -> !sigi.stack {
+        // -> \f;
+        %s1, %v1_f = sigi.pop %s0: !closure.box<(!sigi.stack) -> !sigi.stack> // f: (-> int, int, bool)
+        %s2 = closure.call %v1_f (%s1) : !closure.box<(!sigi.stack) -> !sigi.stack> // call f: -> int, int, bool
+        return %s2: !sigi.stack
+    }
+    // compose: (-> int, int), (int, int -> int, int, bool) -> (-> int, int, bool)
+    func.func private @compose(%s0: !sigi.stack) -> !sigi.stack {
+        // -> \ab, \bc;
+        %s1, %v1_ab = sigi.pop %s0: !closure.box<(!sigi.stack) -> !sigi.stack> // ab: (-> int, int)
+        %s2, %v2_bc = sigi.pop %s1: !closure.box<(!sigi.stack) -> !sigi.stack> // bc: (int, int -> int, int, bool)
+        %v5 = closure.box [%v3_ab = %v1_ab : !closure.box<(!sigi.stack) -> !sigi.stack>, %v4_bc = %v2_bc : !closure.box<(!sigi.stack) -> !sigi.stack>] (%s3 : !sigi.stack) -> !sigi.stack { // -> int, int, bool
+            %s4 = closure.call %v3_ab (%s3) : !closure.box<(!sigi.stack) -> !sigi.stack> // call ab: -> int, int
+            %s5 = closure.call %v4_bc (%s4) : !closure.box<(!sigi.stack) -> !sigi.stack> // call bc: int, int -> int, int, bool
+            closure.return %s5: !sigi.stack
+        }
+        %s6 = sigi.push %s2, %v5: !closure.box<(!sigi.stack) -> !sigi.stack>
+        return %s6: !sigi.stack
+    }
+    // id: int -> int
+    func.func private @id(%s0: !sigi.stack) -> !sigi.stack {
+        // -> x;
+        %s1, %v1_x = sigi.pop %s0: i32 // x: int
+        %s2 = sigi.push %s1, %v1_x: i32 // push x
+        return %s2: !sigi.stack
+    }
+    // test0: ->
+    func.func private @test0(%s0: !sigi.stack) -> !sigi.stack {
+        %v1 = arith.constant 1: i32
+        %s1 = sigi.push %s0, %v1: i32
+        %s2 = func.call @id(%s1) : (!sigi.stack) -> !sigi.stack // int -> int
+        %s3, %v2 = sigi.pop %s2: i32 // pop intrinsic
+        return %s3: !sigi.stack
+    }
+    // higherOrder: (-> int, int) -> (-> int, int, bool)
+    func.func private @higherOrder(%s0: !sigi.stack) -> !sigi.stack {
+        %v1 = closure.box [] (%s1 : !sigi.stack) -> !sigi.stack { // -> bool
+            %v2 = arith.constant 1: i1
+            %s2 = sigi.push %s1, %v2: i1
+            closure.return %s2: !sigi.stack
+        }
+        %s3 = sigi.push %s0, %v1: !closure.box<(!sigi.stack) -> !sigi.stack>
+        %s4 = func.call @compose(%s3) : (!sigi.stack) -> !sigi.stack // (-> int, int), (int, int -> int, int, bool) -> (-> int, int, bool)
+        return %s4: !sigi.stack
+    }
+    // test1: -> int, int, bool
+    func.func private @test1(%s0: !sigi.stack) -> !sigi.stack {
+        %v1 = closure.box [] (%s1 : !sigi.stack) -> !sigi.stack { // -> int, int
+            %v2 = arith.constant 1: i32
+            %s2 = sigi.push %s1, %v2: i32
+            %v3 = arith.constant 2: i32
+            %s3 = sigi.push %s2, %v3: i32
+            closure.return %s3: !sigi.stack
+        }
+        %s4 = sigi.push %s0, %v1: !closure.box<(!sigi.stack) -> !sigi.stack>
+        %s5 = func.call @higherOrder(%s4) : (!sigi.stack) -> !sigi.stack // (-> int, int) -> (-> int, int, bool)
+        %s6 = func.call @apply(%s5) : (!sigi.stack) -> !sigi.stack // (-> int, int, bool) -> int, int, bool
+        return %s6: !sigi.stack
+    }
+    // __main__: -> int, int, bool
+    func.func @__main__(%s0: !sigi.stack) -> !sigi.stack attributes {sigi.main} {
+        %s1 = func.call @test0(%s0) : (!sigi.stack) -> !sigi.stack // ->
+        %s2 = func.call @test1(%s1) : (!sigi.stack) -> !sigi.stack // -> int, int, bool
+        return %s2: !sigi.stack
+    }
+}

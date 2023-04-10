@@ -3,9 +3,75 @@ module {
     // apply: (-> int) -> int
     func.func private @apply(%s0: !sigi.stack) -> !sigi.stack {
         // -> \f;
-        %s1, %v1_f = sigi.pop %s0: !closure.box<(!sigi.stack) -> !sigi.stack> // f: ('A -> 'B)
-        %s2 = closure.call %v1_f (%s1) : !closure.box<(!sigi.stack) -> !sigi.stack> // call f: 'A -> 'B
+        %s1, %v1_f = sigi.pop %s0: !closure.box<(!sigi.stack) -> !sigi.stack> // f: (-> int)
+        %s2 = closure.call %v1_f (%s1) : !closure.box<(!sigi.stack) -> !sigi.stack> // call f: -> int
         return %s2: !sigi.stack
+    }
+    // fib_naive: int -> int
+    func.func private @fib_naive(%s0: !sigi.stack) -> !sigi.stack {
+        // -> n;
+        %s1, %v1_n = sigi.pop %s0: i32 // n: int
+        %s2 = sigi.push %s1, %v1_n: i32 // push n
+        %v2 = arith.constant 1: i32
+        %s3 = sigi.push %s2, %v2: i32
+        // <=
+        %s4, %v3 = sigi.pop %s3: i32
+        %s5, %v4 = sigi.pop %s4: i32
+        %v5 = arith.cmpi "sle", %v3, %v4: i32
+        %s6 = sigi.push %s5, %v5: i1
+        %v6 = closure.box [] (%s7 : !sigi.stack) -> !sigi.stack { // -> int
+            %v7 = arith.constant 1: i32
+            %s8 = sigi.push %s7, %v7: i32
+            closure.return %s8: !sigi.stack
+        }
+        %s9 = sigi.push %s6, %v6: !closure.box<(!sigi.stack) -> !sigi.stack>
+        %v9 = closure.box [%v8_n = %v1_n : i32] (%s10 : !sigi.stack) -> !sigi.stack { // -> int
+            %s11 = sigi.push %s10, %v8_n: i32 // push n
+            %v10 = arith.constant 2: i32
+            %s12 = sigi.push %s11, %v10: i32
+            // -
+            %s13, %v11 = sigi.pop %s12: i32
+            %s14, %v12 = sigi.pop %s13: i32
+            %v13 = arith.subi %v11, %v12: i32
+            %s15 = sigi.push %s14, %v13: i32
+            %s16 = func.call @fib_naive(%s15) : (!sigi.stack) -> !sigi.stack // int -> int
+            %s17 = sigi.push %s16, %v8_n: i32 // push n
+            %v14 = arith.constant 1: i32
+            %s18 = sigi.push %s17, %v14: i32
+            // -
+            %s19, %v15 = sigi.pop %s18: i32
+            %s20, %v16 = sigi.pop %s19: i32
+            %v17 = arith.subi %v15, %v16: i32
+            %s21 = sigi.push %s20, %v17: i32
+            %s22 = func.call @fib_naive(%s21) : (!sigi.stack) -> !sigi.stack // int -> int
+            // +
+            %s23, %v18 = sigi.pop %s22: i32
+            %s24, %v19 = sigi.pop %s23: i32
+            %v20 = arith.addi %v18, %v19: i32
+            %s25 = sigi.push %s24, %v20: i32
+            closure.return %s25: !sigi.stack
+        }
+        %s26 = sigi.push %s9, %v9: !closure.box<(!sigi.stack) -> !sigi.stack>
+        %s27, %v21 = sigi.pop %s26: !closure.box<(!sigi.stack) -> !sigi.stack>
+        %s28, %v22 = sigi.pop %s27: !closure.box<(!sigi.stack) -> !sigi.stack>
+        %s29, %v23 = sigi.pop %s28: i1
+        %v24 = scf.if %v23 -> !closure.box<(!sigi.stack) -> !sigi.stack> {
+          scf.yield %v22: !closure.box<(!sigi.stack) -> !sigi.stack>
+        } else {
+          scf.yield %v21: !closure.box<(!sigi.stack) -> !sigi.stack>
+        }
+        %s30 = sigi.push %s29, %v24: !closure.box<(!sigi.stack) -> !sigi.stack>
+        %s31 = func.call @apply(%s30) : (!sigi.stack) -> !sigi.stack // (-> int) -> int
+        return %s31: !sigi.stack
+    }
+    // fib_tailrec: int -> int
+    func.func private @fib_tailrec(%s0: !sigi.stack) -> !sigi.stack {
+        %v1 = arith.constant 1: i32
+        %s1 = sigi.push %s0, %v1: i32
+        %v2 = arith.constant 1: i32
+        %s2 = sigi.push %s1, %v2: i32
+        %s3 = func.call @fib_tailrec_helper(%s2) : (!sigi.stack) -> !sigi.stack // int, int, int -> int
+        return %s3: !sigi.stack
     }
     // fib_tailrec_helper: int, int, int -> int
     func.func private @fib_tailrec_helper(%s0: !sigi.stack) -> !sigi.stack {
@@ -85,72 +151,6 @@ module {
         %s44 = sigi.push %s43, %v38: !closure.box<(!sigi.stack) -> !sigi.stack>
         %s45 = func.call @apply(%s44) : (!sigi.stack) -> !sigi.stack // (-> int) -> int
         return %s45: !sigi.stack
-    }
-    // fib_tailrec: int -> int
-    func.func private @fib_tailrec(%s0: !sigi.stack) -> !sigi.stack {
-        %v1 = arith.constant 1: i32
-        %s1 = sigi.push %s0, %v1: i32
-        %v2 = arith.constant 1: i32
-        %s2 = sigi.push %s1, %v2: i32
-        %s3 = func.call @fib_tailrec_helper(%s2) : (!sigi.stack) -> !sigi.stack // int, int, int -> int
-        return %s3: !sigi.stack
-    }
-    // fib_naive: int -> int
-    func.func private @fib_naive(%s0: !sigi.stack) -> !sigi.stack {
-        // -> n;
-        %s1, %v1_n = sigi.pop %s0: i32 // n: int
-        %s2 = sigi.push %s1, %v1_n: i32 // push n
-        %v2 = arith.constant 1: i32
-        %s3 = sigi.push %s2, %v2: i32
-        // <=
-        %s4, %v3 = sigi.pop %s3: i32
-        %s5, %v4 = sigi.pop %s4: i32
-        %v5 = arith.cmpi "sle", %v3, %v4: i32
-        %s6 = sigi.push %s5, %v5: i1
-        %v6 = closure.box [] (%s7 : !sigi.stack) -> !sigi.stack { // -> int
-            %v7 = arith.constant 1: i32
-            %s8 = sigi.push %s7, %v7: i32
-            closure.return %s8: !sigi.stack
-        }
-        %s9 = sigi.push %s6, %v6: !closure.box<(!sigi.stack) -> !sigi.stack>
-        %v9 = closure.box [%v8_n = %v1_n : i32] (%s10 : !sigi.stack) -> !sigi.stack { // -> int
-            %s11 = sigi.push %s10, %v8_n: i32 // push n
-            %v10 = arith.constant 2: i32
-            %s12 = sigi.push %s11, %v10: i32
-            // -
-            %s13, %v11 = sigi.pop %s12: i32
-            %s14, %v12 = sigi.pop %s13: i32
-            %v13 = arith.subi %v11, %v12: i32
-            %s15 = sigi.push %s14, %v13: i32
-            %s16 = func.call @fib_naive(%s15) : (!sigi.stack) -> !sigi.stack // int -> int
-            %s17 = sigi.push %s16, %v8_n: i32 // push n
-            %v14 = arith.constant 1: i32
-            %s18 = sigi.push %s17, %v14: i32
-            // -
-            %s19, %v15 = sigi.pop %s18: i32
-            %s20, %v16 = sigi.pop %s19: i32
-            %v17 = arith.subi %v15, %v16: i32
-            %s21 = sigi.push %s20, %v17: i32
-            %s22 = func.call @fib_naive(%s21) : (!sigi.stack) -> !sigi.stack // int -> int
-            // +
-            %s23, %v18 = sigi.pop %s22: i32
-            %s24, %v19 = sigi.pop %s23: i32
-            %v20 = arith.addi %v18, %v19: i32
-            %s25 = sigi.push %s24, %v20: i32
-            closure.return %s25: !sigi.stack
-        }
-        %s26 = sigi.push %s9, %v9: !closure.box<(!sigi.stack) -> !sigi.stack>
-        %s27, %v21 = sigi.pop %s26: !closure.box<(!sigi.stack) -> !sigi.stack>
-        %s28, %v22 = sigi.pop %s27: !closure.box<(!sigi.stack) -> !sigi.stack>
-        %s29, %v23 = sigi.pop %s28: i1
-        %v24 = scf.if %v23 -> !closure.box<(!sigi.stack) -> !sigi.stack> {
-          scf.yield %v22: !closure.box<(!sigi.stack) -> !sigi.stack>
-        } else {
-          scf.yield %v21: !closure.box<(!sigi.stack) -> !sigi.stack>
-        }
-        %s30 = sigi.push %s29, %v24: !closure.box<(!sigi.stack) -> !sigi.stack>
-        %s31 = func.call @apply(%s30) : (!sigi.stack) -> !sigi.stack // (-> int) -> int
-        return %s31: !sigi.stack
     }
     // __main__: ->
     func.func @__main__(%s0: !sigi.stack) -> !sigi.stack attributes {sigi.main} {

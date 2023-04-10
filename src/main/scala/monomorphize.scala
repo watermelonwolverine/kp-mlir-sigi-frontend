@@ -10,10 +10,12 @@ package monomorphize {
   import de.cfaed.sigi.given
 
   import scala.collection.mutable
-  import types.{TySubst, *}
+  import types.*
 
-  import de.cfaed.sigi.builtins._
+  import de.cfaed.sigi.builtins.*
   import debug.given
+
+  import de.cfaed.sigi.repl.Env
 
 
   case class EmittableModule(
@@ -23,7 +25,10 @@ package monomorphize {
   ) {
     val mainFun: TFunDef = {
       val mainFuncId = new UserFuncId("__main__", FilePos(mainExpr.pos, sourceFileName))
-      TFunDef(mainFuncId, mainExpr.stackTy, mainExpr)
+      val scope = Env.Default.toTypingScope.addBindings(
+        functions.collect { case (id: UserFuncId, CompileFunctionDefinition(definition)) => definition.toVarBinding }
+        )
+      TFunDef(mainFuncId, mainExpr.stackTy, mainExpr, scope.withContext)
     }
   }
 
@@ -35,10 +40,10 @@ package monomorphize {
     * @param module
     * @return
     */
-  def monomorphize(module: TModule): Either[SigiCompilationError, EmittableModule] = {
+  def monomorphize(module: TModule)(using debug.TypeInfLogger): Either[SigiCompilationError, EmittableModule] = {
 
 
-    val ctx = InstantiationContext.newRootCtx(module)
+    val ctx = new InstantiationContext(module)
     for {
       newMainExpr <- ctx.rewriteExpr(module.mainExpr)
       () <- ctx.doInstantiate()
@@ -64,44 +69,31 @@ package monomorphize {
   }
 
   object InstantiationContext {
-    def newRootCtx(module: TModule)(using debug.TypeInfLogger): InstantiationContext = new InstantiationContext(
-      types.makeTySubst({ case a => a }), // empty subst
-      module,
-      mutable.Map()
-      )
+    def newRootCtx(module: TModule)(using debug.TypeInfLogger): InstantiationContext = new InstantiationContext(module)
   }
 
   private class InstantiationContext(
-    /** Substitute type variables with data types. */
-    private val instSubst: TySubst,
-
     /** Module context. */
     private val module: TModule,
+  )(using log: debug.TypeInfLogger) {
+
+    private val typingCtx: TypingCtx = TypingCtx()
 
     /** Maps function ids to their currently known instantiations. */
-    private val funcInstantiations: mutable.Map[FuncId, TFunDef] = mutable.Map(),
-    private val funcInstantiationIds: mutable.Map[FuncId, mutable.Map[StackTypeEqualizer, FuncId]] = mutable.Map(),
-    private val nextInstantiationsToDo: mutable.Set[(FuncInstantiationId, EmittableFuncId)] = mutable.Set(),
-    private val usedUncompiledBuiltins: mutable.Set[(BuiltinFuncId, CompilationStrategy)] = mutable.Set()
-  )(using log: debug.TypeInfLogger) {
+    private val funcInstantiations: mutable.Map[FuncId, TFunDef] = mutable.LinkedHashMap()
+    private val funcInstantiationIds: mutable.Map[FuncId, mutable.Map[StackTypeEqualizer, FuncId]] = mutable.Map()
+    private val nextInstantiationsToDo: mutable.Set[(FuncInstantiationId, EmittableFuncId)] = mutable.Set()
+    private val usedUncompiledBuiltins: mutable.Set[(BuiltinFuncId, CompilationStrategy)] = mutable.LinkedHashSet()
 
     /** All functions required to compile the module. */
     def getAllFunctions: Map[FuncId, CompilationStrategy] =
       (funcInstantiations.values.toList.map(it => it.id -> CompileFunctionDefinition(it)) ++ usedUncompiledBuiltins).toMap
 
-    def groundTy(ty: KStackTypeItem): Either[SigiCompilationError, KDataType] = {
-      instSubst.substTy(ty) match
-        case dataType: KDataType => Right(dataType)
-        case other => Left(new SigiCompilationError(s"Expected ground type: $other"))
-    }
-
-    private def groundStackTy(ty: StackType): Either[SigiCompilationError, StackType] = {
-      Right(instSubst.substStackType(ty))
-    }
-
     /** Given a callee func id and the actual type at the
-      * invocation site, return a function def for the callee
-      * func, possibly monomorphized.
+      * invocation site, return a function id for the callee
+      * func, possibly monomorphized. The actual job of generating
+      * code for the func def is deferred until [[doInstantiate]].
+      * Equal parameterizations are reused.
       */
     private def resolveGenericCallee(groundTy: StackType, id: EmittableFuncId): Either[SigiCompilationError, FuncId] = {
       val instantiableId = id match
@@ -148,54 +140,53 @@ package monomorphize {
       Right(())
     }
 
-    private def newSubContext(subst: TySubst) =
-      new InstantiationContext(subst,
-                               this.module,
-                               this.funcInstantiations,
-                               this.funcInstantiationIds,
-                               this.nextInstantiationsToDo,
-                               this.usedUncompiledBuiltins)
-
     private def monomorphizeFunction(resultId: FuncInstantiationId, groundTy: StackType)(originalFunc: TFunDef): Either[SigiCompilationError, Unit] = {
       for {
-        subst <- types.computeInstantiation(groundTy, originalFunc.ty)
-        newCtx = newSubContext(subst)
-        rewritten <- newCtx.rewriteExpr(originalFunc.body)
+        retyped <- retypeFunctionBody(originalFunc.scope(typingCtx), groundTy, originalFunc.body)
+        rewritten <- rewriteExpr(retyped)
       } yield {
         val newDef = TFunDef(
           id = resultId,
           ty = groundTy,
-          body = rewritten
+          body = rewritten,
+          scope = originalFunc.scope
           )
         this.funcInstantiations.put(resultId, newDef)
       }
     }
 
+
+    /**
+      * Retype the body of a function with a given target type.
+      * This gives a more specific type to all sub-terms based
+      * on type information known at the call site. If it is
+      * done in call graph order, then it should propagate
+      * type information naturally and eventually all terms should be ground.
+      */
+    private def retypeFunctionBody(targetType: StackType, originalFunc: TFunDef): Either[SigiCompilationError, TypedExpr] =
+      val scope = originalFunc.scope(this.typingCtx)
+      types.assignType(scope)(Some(targetType))(originalFunc.body.erase)
+
+
+    /** Rewrite function calls in the expr to bind to monomorphized function IDs.
+      * This side effects on this object and records the functions to instantiate.
+      */
     def rewriteExpr(expr: TypedExpr): Either[SigiCompilationError, TypedExpr] = expr match
       case TChain(stackTy, a, b) =>
         for {
           ra <- rewriteExpr(a)
           rb <- rewriteExpr(b)
-        } yield TChain(stackTy, ra, rb) // todo stack type should be reinferred here
-      case TEvalBarrier(e) => ???
-      case TPushList(ty, items) => ???
-      case TPushPrim(ty, value) => Right(expr) // must be ground
-
+        } yield TChain(stackTy, ra, rb)
+      case TPushList(ty, items) => items.map(rewriteExpr).flattenList.map(items => TPushList(ty, items))
       case TFunApply(stackTy, id: EmittableFuncId) =>
         resolveGenericCallee(stackTy, id).map { calleeId =>
           TFunApply(stackTy, calleeId)
         }
-
-      case TFunApply(stackTy, id: StackValueId) =>
-        groundStackTy(stackTy).map(st => TFunApply(st, id))
-
       case TPushQuote(term) =>
         // For quotes, we have to make sure that all captured values are ground.
         // TODO generic quotes will surely be a problem.
         rewriteExpr(term).map(TPushQuote.apply)
-
-      case TNameTopN(stackTy, ids) =>
-        groundStackTy(stackTy).map(st => TNameTopN(st, ids))
+      case _ => Right(expr)
 
   }
 }

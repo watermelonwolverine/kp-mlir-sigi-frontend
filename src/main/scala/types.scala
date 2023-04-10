@@ -8,6 +8,8 @@ package types {
   import repl.Env
   import types.StackType.canonicalize
 
+  import com.sun.tools.classfile.TypeAnnotation.TargetType
+
   import java.util.{Locale, Objects}
   import scala.annotation.tailrec
   import scala.collection.{TraversableOnce, mutable}
@@ -21,9 +23,15 @@ package types {
 
   /** Typed tree. */
   sealed trait TypedTree extends Positional
+
   sealed trait TypedStmt extends TypedTree
-  case class TFunDef(id: EmittableFuncId, ty: StackType, body: TypedExpr) extends TypedStmt
+
+  case class TFunDef(id: EmittableFuncId, ty: StackType, body: TypedExpr, scope: TypingCtx => TypingScope) extends TypedStmt {
+    def toVarBinding: VarBinding = VarBinding(id, KFun(ty))
+  }
+
   case class TExprStmt(e: TypedExpr) extends TypedStmt
+
   case class TBlock(stmts: List[TypedStmt]) extends TypedStmt
 
   case class TModule(
@@ -154,7 +162,7 @@ package types {
     case Eq extends BoundKind("=")
     case Upper extends BoundKind("<:")
 
-    def opposite: BoundKind = this match
+    def complement: BoundKind = this match
       case Lower => Upper
       case Eq => Eq
       case Upper => Lower
@@ -379,57 +387,31 @@ package types {
 
   def unaryOpType(t: KDataType) = StackType(consumes = List(t), produces = List(t))
 
-
-  /** Given a ground callee type, and a generic callee type, infer
-    * a substitution that maps the type variables within the generic type
-    * to concrete data types found in the ground type.
-    *
-    * The ground callee type is known to be some instantiation of
-    * the generic type because that's how it was derived during type inference.
-    *
-    * @param groundTy  The ground callee type
-    * @param genericTy The generic callee type
-    */
-  def computeInstantiation(groundTy: StackType, genericTy: StackType)(using debug.TypeInfLogger): Either[SigiTypeError, TySubst] = {
-    if !genericTy.isGeneric then return Right(makeTySubst({ t => t })) // empty substitution
-
-    // otherwise infer the instantiations of each type var in the generic type
-    val ctx = new TypingCtx(implicitly)
-    val inferenceType = ctx.mapToIvars(genericTy)
-    ctx.unifyWithoutIvarConversion(groundTy, inferenceType)
-      .orElse(ctx.checkAllIvarsGround())
-      .toLeft({
-        ctx.groundSubst(true)
-      })
-  }
-
-
-  private[types] class TypingCtx(private[types] val log: debug.TypeInfLogger) {
+  class TypingCtx(using debug.TypeInfLogger) {
+    private[types] val log: debug.TypeInfLogger = implicitly
 
     private val myIvars = mutable.Set[KInferenceVar]()
     private val myRIvars = mutable.Set[KRowIVar]()
 
-    def newIvar(typeVar: KTypeVar): KInferenceVar =
+    private[types] def newIvar(typeVar: KTypeVar): KInferenceVar =
       val ivar = KInferenceVar(typeVar, this)
       myIvars += ivar
       ivar
 
-    def newRIvar(rvar: KRowVar): KRowIVar =
+    private[types] def newRIvar(rvar: KRowVar): KRowIVar =
       val rivar = KRowIVar(rvar, this)
       myRIvars += rivar
       rivar
 
-    def onBoundAdded(ivar: KInferenceVar, boundKind: BoundKind, bound: KStackTypeItem): Unit = {
+    private[types] def onBoundAdded(ivar: KInferenceVar, boundKind: BoundKind, bound: KStackTypeItem): Unit = {
       log.boundAdded(ivar, boundKind, bound)
       bound match
-        case ivar: KInferenceVar => ivar.addBound(boundKind.opposite, ivar)
+        case ivar: KInferenceVar => ivar.addBound(boundKind.complement, ivar)
         case _ =>
     }
 
     /** Check that the given type is compatible with the bound.
       * This means that the type is at least as general as the bound.
-      * This represents a subtyping relation between function types.
-      * TODO subtyping during unification.
       *
       * To check this, the bound is treated as a ground type (its
       * type variables are treated as types, not variables). A round
@@ -438,9 +420,15 @@ package types {
       */
     def checkCompatible(ty: StackType, bound: StackType): Option[SigiTypeError] =
       val tyAsIvars = mapToIvars(ty.canonicalize)
-      unifyWithoutIvarConversion(tyAsIvars, bound.canonicalize)
+      unifyWithoutIvarConversion(tyAsIvars)(bound.canonicalize)
 
 
+    /**
+      * A substitution that maps all unknown type/row variables
+      * to new ivars, rivars. The returned object has state:
+      * reusing the same subst will reuse already known ivars.
+      * This is sometimes wanted and sometimes to be avoided.
+      */
     def toIvarSubst: TySubst = {
       val toIvars = mutable.Map[KTypeVar, KInferenceVar]()
       val toRivars = mutable.Map[KRowVar, KRowIVar]()
@@ -453,12 +441,34 @@ package types {
     def mapToIvars(st: StackType): StackType = toIvarSubst.substStackType(st)
 
     /** Returns an error if the ivars registered on this context are not all instantiatable. */
-    def checkAllIvarsGround(): Option[SigiTypeError] = {
+    private def checkAllIvarsGround(): Option[SigiTypeError] = {
       val freeIvars = myIvars.filter(_.instantiation == null)
       if freeIvars.nonEmpty then
         Some(SigiTypeError.ivarsShouldBeGround(freeIvars))
       else
         None
+    }
+
+
+    /** Given a ground callee type, and a generic callee type, infer
+      * a substitution that maps the type variables within the generic type
+      * to concrete data types found in the ground type.
+      *
+      * The ground callee type is known to be some instantiation of
+      * the generic type because that's how it was derived during type inference.
+      *
+      * @param groundTy  The ground callee type
+      * @param genericTy The generic callee type
+      */
+    def computeInstantiation(groundTy: StackType, genericTy: StackType): Either[SigiTypeError, TySubst] = {
+      if !genericTy.isGeneric then return Right(makeTySubst({ t => t })) // empty substitution
+
+      // otherwise infer the instantiations of each type var in the generic type
+      val inferenceType = mapToIvars(genericTy)
+      unifyWithoutIvarConversion(groundTy)(inferenceType)
+        .toLeft({
+          groundSubst(false)
+        })
     }
 
     /** A ground substitution substitutes inference variables with their instantiation. */
@@ -524,13 +534,13 @@ package types {
     def partialGround: TySubst = groundSubst(eliminateIvars = false)
 
 
-    private[types] def unifyWithoutIvarConversion(a: StackType, b: StackType): Option[SigiTypeError] =
+    def unifyWithoutIvarConversion(a: StackType)(b: StackType): Option[SigiTypeError] =
       unify(a.produces, b.produces).orElse(unify(a.consumes, b.consumes))
 
     def unify(a: StackType, b: StackType): Option[SigiTypeError] =
       val ac = mapToIvars(a.canonicalize)
       val bc = mapToIvars(b.canonicalize)
-      unifyWithoutIvarConversion(ac, bc)
+      unifyWithoutIvarConversion(ac)(bc)
 
     /**
       * Unify both lists of types. This adds constraints on the inference variables to make them
@@ -639,6 +649,10 @@ package types {
         ctx = this.ctx
         )
 
+    def withContext(typingCtx: TypingCtx): TypingScope = new TypingScope(
+      bindings, incompletelyTypedThings, typesInScope, typingCtx
+      )
+
     def addBindings(newBindings: IterableOnce[VarBinding]): TypingScope =
       new TypingScope(
         bindings = this.bindings ++ newBindings.iterator.map(binding => binding.funcId.sourceName -> binding),
@@ -669,7 +683,7 @@ package types {
     def apply(varNs: BindingTypes,
               typeNs: Map[String, datamodel.TypeDescriptor])
              (using debug.TypeInfLogger): TypingScope =
-      new TypingScope(varNs, Map.empty, typeNs, TypingCtx(implicitly))
+      new TypingScope(varNs, Map.empty, typeNs, TypingCtx())
   }
 
 
@@ -694,7 +708,7 @@ package types {
   def typeFile(env: TypingScope)(file: KFile): Either[SigiTypeError, TModule] = {
     doValidation(env)(KBlock(file.funs)).flatMap {
       case TBlock(funs) =>
-        val typedFuns: Map[FuncId, TFunDef] = funs.collect { case fun@TFunDef(id, _, _) => (id, fun) }.toMap
+        val typedFuns: Map[FuncId, TFunDef] = funs.collect { case fun: TFunDef => fun.id -> fun }.toMap
         val fileEnv = env.addBindings(typedFuns.map { case (id, fun) => VarBinding(id, KFun(fun.ty)) })
         doValidation(fileEnv)(KExprStatement(file.mainExpr))
           .flatMap { case TExprStmt(te) => checkMainExprType(te).toLeft(te) }
@@ -702,8 +716,8 @@ package types {
     }
   }
 
-  def checkCompatible(ty: StackType, bound: StackType)(implicit log: debug.TypeInfLogger = debug.NoopLogger): Option[SigiTypeError] =
-    new TypingCtx(log).checkCompatible(ty, bound)
+  def checkCompatible(ty: StackType, bound: StackType)(using debug.TypeInfLogger): Option[SigiTypeError] =
+    new TypingCtx().checkCompatible(ty, bound)
 
   def checkMainExprType(term: TypedExpr): Option[SigiTypeError] =
     if term.stackTy.simplify.consumes.nonEmpty
@@ -766,7 +780,7 @@ package types {
           (
             // the new env is augmented with a binding for this fun
             env.addBindings(List(VarBinding(id, KFun(actualFunTy)))),
-            TFunDef(id, actualFunTy, typedBody).setPos(ast.pos)
+            TFunDef(id, actualFunTy, typedBody, env.withContext).setPos(ast.pos)
           )
         }
   }
@@ -821,10 +835,17 @@ package types {
   }
 
 
-
   /** Turn a [[KExpr]] into a [[TypedExpr]] by performing type inference. */
-  def assignType(env: TypingScope)(node: KExpr): Either[SigiTypeError, TypedExpr] =
-    assignTypeRec(env)(node).map(_._1).map(env.ctx.ground)
+  def assignType(env: TypingScope)(node: KExpr): Either[SigiTypeError, TypedExpr] = assignType(env)(None)(node)
+
+  def assignType(env: TypingScope)(targetType: Option[StackType])(node: KExpr): Either[SigiTypeError, TypedExpr] =
+    assignTypeRec(env)(node).map(_._1)
+      .map(t => {
+        // if there is a target type, then add new constraints before grounding
+        targetType.foreach(env.ctx.unifyWithoutIvarConversion(t.stackTy))
+        env.ctx.ground(t)
+      })
+
 
   private def assignTypeRec(scope: TypingScope)(node: KExpr): Either[SigiTypeError, (TypedExpr, TypingScope)] = node match
     case PushPrim(ty, v) => Right((TPushPrim(ty, v).setPos(node.pos), scope))
@@ -868,6 +889,9 @@ package types {
         (leftTree, leftScope) <- assignTypeRec(scope)(left)
         (rightTree, rightScope) <- assignTypeRec(leftScope)(right)
         newEnv <- {
+          // This is a def so that a new subst is created each time.
+          // For instance in the term `dup dup`, each `dup` call should
+          // get its own ivars, even though the tvars are the same.
           def toIvarSubst = scope.ctx.toIvarSubst
 
           def log = scope.ctx.log
@@ -880,10 +904,10 @@ package types {
           log.unificationRequest(ta, tb)
           scope.ctx.unify(ta.produces, tb.consumes).map(_.setPos(node.pos))
             .toLeft({
+              // this only replaces ivars that have an instantiation but may keep other ivars live.
               val ground = scope.ctx.partialGround
               val ta2 = ground.substStackType(ta)
               val tb2 = ground.substStackType(tb)
-              // println(s"$ta2 then $tb2")
 
               val commonLen = math.min(ta2.produces.length, tb2.consumes.length)
               val (prod, _) = ta2.produces.splitAtRight(commonLen)

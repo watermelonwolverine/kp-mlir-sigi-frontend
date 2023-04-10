@@ -3,6 +3,7 @@ package de.cfaed.sigi
 import ast.*
 import repl.Env
 import types.*
+import debug.given
 
 import org.scalatest.funsuite.AnyFunSuite
 import org.scalatest.matchers.should.*
@@ -129,7 +130,7 @@ class ParserSpec extends AnyFunSuite with Matchers {
   checkTreeMatches("let id_inferred = ->x; x;;") {
     case f@KFunDef(_, None, _) =>
       types.doValidation(Env.Default.toTypingScope)(f) match
-        case Right(TFunDef(_, StackType(List(a: KTypeVar), List(b: KTypeVar)), _)) if a == b =>
+        case Right(TFunDef(_, StackType(List(a: KTypeVar), List(b: KTypeVar)), _, _)) if a == b =>
         case a => fail(s"Unexpected result: $a")
   }
 }
