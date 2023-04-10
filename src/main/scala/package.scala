@@ -8,7 +8,9 @@ package de.cfaed
   * a [[types.TypedExpr]] by the type checker ([[types.assignType]]).
   * Typed expressions are interpretable by the [[repl]] module and
   * can be emitted as MLIR code by [[emitmlir]]. Note that the [[repl]]
-  * supports some features that the MLIR backend doesn't.
+  * supports some features that the MLIR backend doesn't. The MLIR
+  * backend additionally performs function monomorphization ([[monomorphize.monomorphize]])
+  * to support generic functions.
   *
   * @author Clément Fournier &lt;clement.fournier@tu-dresden.de&gt;
   */
