@@ -1,0 +1,13 @@
+
+
+let id: 'a -> 'a = -> x; x ;;
+
+let test0 =
+1
+# these should generate only one monomorphized fun
+id
+id
+id
+pop;;
+
+test0

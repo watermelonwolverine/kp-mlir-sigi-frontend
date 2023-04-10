@@ -1,5 +1,11 @@
 module {
-    func.func private @"sigi::show"(!sigi.stack) -> !sigi.stack
+    func.func private @"sigi::pp"(!sigi.stack) -> !sigi.stack
+    // show: int ->
+    func.func private @show(%s0: !sigi.stack) -> !sigi.stack {
+        %s1 = func.call @"sigi::pp"(%s0) : (!sigi.stack) -> !sigi.stack // int -> int
+        %s2, %v1 = sigi.pop %s1: i32 // pop intrinsic
+        return %s2: !sigi.stack
+    }
     // swap: int, int -> int, int
     func.func private @swap(%s0: !sigi.stack) -> !sigi.stack {
         // -> a, b;
@@ -29,7 +35,7 @@ module {
         %s6, %v5 = sigi.pop %s5: i32
         %v6 = arith.addi %v4, %v5: i32
         %s7 = sigi.push %s6, %v6: i32
-        %s8 = func.call @"sigi::show"(%s7) : (!sigi.stack) -> !sigi.stack // int ->
+        %s8 = func.call @show(%s7) : (!sigi.stack) -> !sigi.stack // int ->
         return %s8: !sigi.stack
     }
 }

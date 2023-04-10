@@ -1,10 +1,16 @@
 module {
-    func.func private @"sigi::show"(!sigi.stack) -> !sigi.stack
+    func.func private @"sigi::pp"(!sigi.stack) -> !sigi.stack
     // apply: (-> int) -> int
     func.func private @apply(%s0: !sigi.stack) -> !sigi.stack {
         // -> \f;
         %s1, %v1_f = sigi.pop %s0: !closure.box<(!sigi.stack) -> !sigi.stack> // f: (-> int)
         %s2 = closure.call %v1_f (%s1) : !closure.box<(!sigi.stack) -> !sigi.stack> // call f: -> int
+        return %s2: !sigi.stack
+    }
+    // show: bool ->
+    func.func private @show(%s0: !sigi.stack) -> !sigi.stack {
+        %s1 = func.call @"sigi::pp"(%s0) : (!sigi.stack) -> !sigi.stack // bool -> bool
+        %s2, %v1 = sigi.pop %s1: i1 // pop intrinsic
         return %s2: !sigi.stack
     }
     // fib_naive: int -> int
@@ -165,7 +171,7 @@ module {
         %s6, %v4 = sigi.pop %s5: i32
         %v5 = arith.cmpi "eq", %v3, %v4: i32
         %s7 = sigi.push %s6, %v5: i1
-        %s8 = func.call @"sigi::show"(%s7) : (!sigi.stack) -> !sigi.stack // bool ->
+        %s8 = func.call @show(%s7) : (!sigi.stack) -> !sigi.stack // bool ->
         return %s8: !sigi.stack
     }
 }

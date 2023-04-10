@@ -142,7 +142,7 @@ package monomorphize {
 
     private def monomorphizeFunction(resultId: FuncInstantiationId, groundTy: StackType)(originalFunc: TFunDef): Either[SigiCompilationError, Unit] = {
       for {
-        retyped <- retypeFunctionBody(originalFunc.scope(typingCtx), groundTy, originalFunc.body)
+        retyped <- retypeFunctionBody(groundTy, originalFunc)
         rewritten <- rewriteExpr(retyped)
       } yield {
         val newDef = TFunDef(

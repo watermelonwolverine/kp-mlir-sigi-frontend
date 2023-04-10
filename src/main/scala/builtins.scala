@@ -196,6 +196,8 @@ package builtins {
     val swap = stdLibFun()("let swap = -> a, b; b a ;;")
     // quote top of the stack
     val quote = stdLibFun()("let quote = -> a; { a } ;;")
+    // show an item and pop it. Implemented using pp.
+    val show = stdLibFun(pp, pop)("let show = pp pop ;;")
 
 
     Set(
@@ -228,17 +230,11 @@ package builtins {
       pop,
       dup,
       cond,
-      pp,
       pass,
       swap,
       quote,
-
-      stackFun("show", StackType.generic1(a => StackType(consumes = List(a))),
-               compilationStrategy = mlirFwdDeclaration) {
-        case stack@(hd :: _) =>
-          println(s"$hd")
-          Right(stack)
-      }
+      show,
+      pp,
       )
   }
 }
