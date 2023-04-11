@@ -10,7 +10,7 @@ module {
         // +
         %s5, %v3 = sigi.pop %s4: i32
         %s6, %v4 = sigi.pop %s5: i32
-        %v5 = arith.addi %v3, %v4: i32
+        %v5 = arith.addi %v4, %v3: i32
         %s7 = sigi.push %s6, %v5: i32
         %s8, %v6 = sigi.pop %s7: i32 // pop intrinsic
         %s9 = sigi.push %s8, %v2_x: i32 // push x
@@ -18,7 +18,7 @@ module {
         // -
         %s11, %v7 = sigi.pop %s10: i32
         %s12, %v8 = sigi.pop %s11: i32
-        %v9 = arith.subi %v7, %v8: i32
+        %v9 = arith.subi %v8, %v7: i32
         %s13 = sigi.push %s12, %v9: i32
         %s14, %v10 = sigi.pop %s13: i32 // pop intrinsic
         %s15 = sigi.push %s14, %v2_x: i32 // push x
@@ -26,7 +26,7 @@ module {
         // *
         %s17, %v11 = sigi.pop %s16: i32
         %s18, %v12 = sigi.pop %s17: i32
-        %v13 = arith.muli %v11, %v12: i32
+        %v13 = arith.muli %v12, %v11: i32
         %s19 = sigi.push %s18, %v13: i32
         %s20, %v14 = sigi.pop %s19: i32 // pop intrinsic
         %s21 = sigi.push %s20, %v2_x: i32 // push x
@@ -34,7 +34,7 @@ module {
         // /
         %s23, %v15 = sigi.pop %s22: i32
         %s24, %v16 = sigi.pop %s23: i32
-        %v17 = arith.divi %v15, %v16: i32
+        %v17 = arith.divi %v16, %v15: i32
         %s25 = sigi.push %s24, %v17: i32
         %s26, %v18 = sigi.pop %s25: i32 // pop intrinsic
         %s27 = sigi.push %s26, %v2_x: i32 // push x
@@ -42,7 +42,7 @@ module {
         // %
         %s29, %v19 = sigi.pop %s28: i32
         %s30, %v20 = sigi.pop %s29: i32
-        %v21 = arith.modi %v19, %v20: i32
+        %v21 = arith.modi %v20, %v19: i32
         %s31 = sigi.push %s30, %v21: i32
         %s32, %v22 = sigi.pop %s31: i32 // pop intrinsic
         %s33 = sigi.push %s32, %v2_x: i32 // push x

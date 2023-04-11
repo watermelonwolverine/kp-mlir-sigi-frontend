@@ -9,7 +9,7 @@ module {
         // =
         %s3, %v3 = sigi.pop %s2: i1
         %s4, %v4 = sigi.pop %s3: i1
-        %v5 = arith.cmpi "eq", %v3, %v4: i1
+        %v5 = arith.cmpi "eq", %v4, %v3: i1
         %s5 = sigi.push %s4, %v5: i1
         return %s5: !sigi.stack
     }

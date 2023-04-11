@@ -11,12 +11,12 @@ module {
         // *
         %s4, %v4 = sigi.pop %s3: i32
         %s5, %v5 = sigi.pop %s4: i32
-        %v6 = arith.muli %v4, %v5: i32
+        %v6 = arith.muli %v5, %v4: i32
         %s6 = sigi.push %s5, %v6: i32
         // +
         %s7, %v7 = sigi.pop %s6: i32
         %s8, %v8 = sigi.pop %s7: i32
-        %v9 = arith.addi %v7, %v8: i32
+        %v9 = arith.addi %v8, %v7: i32
         %s9 = sigi.push %s8, %v9: i32
         return %s9: !sigi.stack
     }

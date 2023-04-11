@@ -273,7 +273,8 @@ case class MlirSymbol(name: String) {
           val result = valIdGen.next()
           val builtinOp = BuiltinIntOps(id)
 
-          println(s"$result = $builtinOp $pop0, $pop1: ${mlirType(a)}")
+          // note the order of arguments
+          println(s"$result = $builtinOp $pop1, $pop0: ${mlirType(a)}")
           renderPush(c, result)
 
         case TFunApply(StackType(List(KInt), List(KInt)), BuiltinFuncId(name@"unary_-")) =>
@@ -358,7 +359,8 @@ case class MlirSymbol(name: String) {
 
         case TNameTopN(stackTy, names) =>
           println(s"// ${t.erase}")
-          for ((id, ty) <- names.zip(stackTy.consumes)) {
+          // note they are popped in reverse order
+          for ((id, ty) <- names.zip(stackTy.consumes).reverse) {
             val popVal = renderPop(ty, valueNameSuffix = s"_${id.sourceName}", comment = id.sourceName + ": " + ty)
             val desc = LocalSymDesc(id = id, mlirName = popVal, mlirType = mlirType(ty))
             localSymEnv.put(id, desc)

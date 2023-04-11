@@ -9,9 +9,9 @@ module {
     // compose: (-> int, int), (int, int -> int, int, bool) -> (-> int, int, bool)
     func.func private @compose(%s0: !sigi.stack) -> !sigi.stack {
         // -> \ab, \bc;
-        %s1, %v1_ab = sigi.pop %s0: !closure.box<(!sigi.stack) -> !sigi.stack> // ab: (-> int, int)
-        %s2, %v2_bc = sigi.pop %s1: !closure.box<(!sigi.stack) -> !sigi.stack> // bc: (int, int -> int, int, bool)
-        %v5 = closure.box [%v3_ab = %v1_ab : !closure.box<(!sigi.stack) -> !sigi.stack>, %v4_bc = %v2_bc : !closure.box<(!sigi.stack) -> !sigi.stack>] (%s3 : !sigi.stack) -> !sigi.stack { // -> int, int, bool
+        %s1, %v1_bc = sigi.pop %s0: !closure.box<(!sigi.stack) -> !sigi.stack> // bc: (int, int -> int, int, bool)
+        %s2, %v2_ab = sigi.pop %s1: !closure.box<(!sigi.stack) -> !sigi.stack> // ab: (-> int, int)
+        %v5 = closure.box [%v3_ab = %v2_ab : !closure.box<(!sigi.stack) -> !sigi.stack>, %v4_bc = %v1_bc : !closure.box<(!sigi.stack) -> !sigi.stack>] (%s3 : !sigi.stack) -> !sigi.stack { // -> int, int, bool
             %s4 = closure.call %v3_ab (%s3) : !closure.box<(!sigi.stack) -> !sigi.stack> // call ab: -> int, int
             %s5 = closure.call %v4_bc (%s4) : !closure.box<(!sigi.stack) -> !sigi.stack> // call bc: int, int -> int, int, bool
             closure.return %s5: !sigi.stack
