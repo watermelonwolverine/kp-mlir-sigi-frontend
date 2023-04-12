@@ -14,7 +14,7 @@ import scala.collection.mutable
 
 package emitmlir {
 
-  import de.cfaed.sigi.builtins.{BuiltinFunSpec, CompileFunctionDefinition, EmitMlirDefinition, FrontendIntrinsic}
+  import de.cfaed.sigi.builtins.{BuiltinFunSpec, BuiltinWithCompilStrategy, CompileFunctionDefinition, EmitMlirDefinition, FrontendIntrinsic}
   import de.cfaed.sigi.emitmlir.MlirBuilder.{BuiltinIntOps, BuiltinUnaryOps, ClosureT, TargetFunType}
 
   import scala.collection.immutable.List
@@ -118,8 +118,9 @@ case class MlirSymbol(name: String) {
     private def mlirType(ty: KStackTypeItem): String = ty match
       case KInt => "i32"
       case KBool => "i1"
-      case KString => "!sigi.str"
       case KFun(_) => ClosureT
+      // These two cases are improperly supported for now.
+      case KString => "!sigi.str"
       case KList(item) => s"!sigi.list<${mlirType(item)}>"
       // This case is for tvars that were not properly resolved
       // by monomorphization. This is a bug of the frontend, but
@@ -317,8 +318,12 @@ case class MlirSymbol(name: String) {
                |}""".stripMargin)
           renderPush(ty, resultId)
 
+        case TFunApply(_, BuiltinWithCompilStrategy(name, FrontendIntrinsic)) =>
+          // if this branch is taken, then something is wrong with the frontend,
+          // eg a missing branch in this match statement.
+          throw IllegalStateException(s"Builtin $name has no compilation strategy!")
+
         // general case of function calls.
-        //  todo monomorphise generic calls, make sure all terms are ground
         case TFunApply(ty, id: EmittableFuncId) =>
           // assume the function has been emitted with the given name (this is after monomorphisation)
 
@@ -411,32 +416,17 @@ case class MlirSymbol(name: String) {
       "<>" -> "arith.cmpi \"ne\",",
 
       // boolean
-      // todo can be shadowed
       "and" -> "arith.andi",
       "or" -> "arith.ori",
       "xor" -> "arith.xori",
       ).map((a, b) => (BuiltinFuncId(a), b))
+
     private val BuiltinUnaryOps = Map(
       "unary_-" -> "",
       "unary_~" -> "",
       "unary_!" -> "",
       ).map((a, b) => (BuiltinFuncId(a), b))
   }
-
-  /*
-  Overview of generation steps:
-  - Each expression is technically a function of type ((!sigi.stack) -> !sigi.stack). Most of them are
-   generated inline though. We use the statement as a codegen boundary because it's also a scoping
-   boundary.
-  - Each function is generated into its own func of type ((!sigi.stack) -> !sigi.stack)
-  - Each quote is mapped to a !closure.box<(!sigi.stack) -> !sigi.stack>
-    - they may capture their environment. This makes memory safety complicated, in the general
-    case we need garbage collection. Let's restrict quotes to only capture closures and integers.
-  - Function calls (= variable access):
-    - builtins map to builtin operators of the sigi dialect
-    - user-defined funs must have a static binding.
-
-  */
 
   private def emitModule(out: PrintStream)(module: monomorphize.EmittableModule): Unit = {
     out.println("module {")

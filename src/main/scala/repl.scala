@@ -172,10 +172,6 @@ package repl {
         definition(env)
           // Remove bindings created by the function call from the environment.
           // Just keep the stack.
-          // todo scoping:
-          //  what is a block in the source,
-          //  should we use that as the scope delimiter,
-          //  should functions use one as body
           .map(e => env.copy(stack = e.stack))
 
   def eval(stmt: TypedStmt)(env: Env): EvalResult = stmt match

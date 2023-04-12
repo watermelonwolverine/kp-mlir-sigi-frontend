@@ -792,14 +792,14 @@ package types {
       case datamodel.TypeParm(tv) =>
         if tyargs.isEmpty
         then Right(tv)
-        else Left(SigiTypeError(s"Type parameter $name cannot have type arguments"))
+        else Left(SigiTypeError(s"Type parameter $name cannot have type arguments").setPos(t.pos))
       case typeDesc =>
         if typeDesc.tparms.lengthCompare(tyargs) != 0 then
-          Left(SigiTypeError(s"Expected ${typeDesc.tparms.length} type arguments, got ${tyargs.length}"))
+          Left(SigiTypeError(s"Expected ${typeDesc.tparms.length} type arguments, got ${tyargs.mkString(" ")}").setPos(t.pos))
         else (name, tyargs) match
           case ("list", List(item)) => resolveType(env)(item).flatMap {
             case dty: KDataType => Right(dty)
-            case t => Left(SigiTypeError.cannotBeListItem(t))
+            case t => Left(SigiTypeError.cannotBeListItem(t).setPos(item.pos))
           }.map(KList.apply)
           case ("int", Nil) => Right(KInt)
           case ("str", Nil) => Right(KString)
@@ -838,7 +838,8 @@ package types {
 
 
   /** Turn a [[KExpr]] into a [[TypedExpr]] by performing type inference. */
-  def assignType(env: TypingScope)(node: KExpr): Either[SigiTypeError, TypedExpr] = assignType(env)(None)(node)
+  def assignType(env: TypingScope)(node: KExpr): Either[SigiTypeError, TypedExpr] =
+    assignType(env)(None)(node)
 
   def assignType(env: TypingScope)(targetType: Option[StackType])(node: KExpr): Either[SigiTypeError, TypedExpr] =
     assignTypeRec(env)(node).map(_._1)
