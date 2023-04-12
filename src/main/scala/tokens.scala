@@ -80,9 +80,8 @@ package tokens {
     | ";;" ^^^ PHAT_SEMI
     | ";" ^^^ SEMI
     | "," ^^^ COMMA
-    | "[<>]=".r ^^ OP.apply
-    | "<" ^^^ LANGLE
-    | ">" ^^^ RANGLE
+    | "<>" ^^ OP.apply
+    | "[<>]=?".r ^^ OP.apply
     | "\\" ^^^ BACKSLASH
 
     private def keyword =

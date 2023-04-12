@@ -7,6 +7,12 @@
   (-x) pop
   (+x) pop
   (~x) pop
+  (x < x) pop
+  (x > x) pop
+  (x >= x) pop
+  (x <= x) pop
+  (x = x) pop
+  (x <> x) pop
 
 true -> b;
   (!b) pop

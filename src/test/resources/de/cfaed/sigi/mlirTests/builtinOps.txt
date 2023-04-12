@@ -61,17 +61,65 @@ module {
         %v30 = arith.xori %v28, %v29: i32
         %s41 = sigi.push %s40, %v30: i32
         %s42, %v31 = sigi.pop %s41: i32 // pop intrinsic
-        %v32 = arith.constant 1: i1
-        %s43 = sigi.push %s42, %v32: i1
+        %s43 = sigi.push %s42, %v2_x: i32 // push x
+        %s44 = sigi.push %s43, %v2_x: i32 // push x
+        // <
+        %s45, %v32 = sigi.pop %s44: i32
+        %s46, %v33 = sigi.pop %s45: i32
+        %v34 = arith.cmpi "slt", %v33, %v32: i32
+        %s47 = sigi.push %s46, %v34: i1
+        %s48, %v35 = sigi.pop %s47: i1 // pop intrinsic
+        %s49 = sigi.push %s48, %v2_x: i32 // push x
+        %s50 = sigi.push %s49, %v2_x: i32 // push x
+        // >
+        %s51, %v36 = sigi.pop %s50: i32
+        %s52, %v37 = sigi.pop %s51: i32
+        %v38 = arith.cmpi "sgt", %v37, %v36: i32
+        %s53 = sigi.push %s52, %v38: i1
+        %s54, %v39 = sigi.pop %s53: i1 // pop intrinsic
+        %s55 = sigi.push %s54, %v2_x: i32 // push x
+        %s56 = sigi.push %s55, %v2_x: i32 // push x
+        // >=
+        %s57, %v40 = sigi.pop %s56: i32
+        %s58, %v41 = sigi.pop %s57: i32
+        %v42 = arith.cmpi "sge", %v41, %v40: i32
+        %s59 = sigi.push %s58, %v42: i1
+        %s60, %v43 = sigi.pop %s59: i1 // pop intrinsic
+        %s61 = sigi.push %s60, %v2_x: i32 // push x
+        %s62 = sigi.push %s61, %v2_x: i32 // push x
+        // <=
+        %s63, %v44 = sigi.pop %s62: i32
+        %s64, %v45 = sigi.pop %s63: i32
+        %v46 = arith.cmpi "sle", %v45, %v44: i32
+        %s65 = sigi.push %s64, %v46: i1
+        %s66, %v47 = sigi.pop %s65: i1 // pop intrinsic
+        %s67 = sigi.push %s66, %v2_x: i32 // push x
+        %s68 = sigi.push %s67, %v2_x: i32 // push x
+        // =
+        %s69, %v48 = sigi.pop %s68: i32
+        %s70, %v49 = sigi.pop %s69: i32
+        %v50 = arith.cmpi "eq", %v49, %v48: i32
+        %s71 = sigi.push %s70, %v50: i1
+        %s72, %v51 = sigi.pop %s71: i1 // pop intrinsic
+        %s73 = sigi.push %s72, %v2_x: i32 // push x
+        %s74 = sigi.push %s73, %v2_x: i32 // push x
+        // <>
+        %s75, %v52 = sigi.pop %s74: i32
+        %s76, %v53 = sigi.pop %s75: i32
+        %v54 = arith.cmpi "ne", %v53, %v52: i32
+        %s77 = sigi.push %s76, %v54: i1
+        %s78, %v55 = sigi.pop %s77: i1 // pop intrinsic
+        %v56 = arith.constant 1: i1
+        %s79 = sigi.push %s78, %v56: i1
         // -> b;
-        %s44, %v33_b = sigi.pop %s43: i1 // b: bool
-        %s45 = sigi.push %s44, %v33_b: i1 // push b
+        %s80, %v57_b = sigi.pop %s79: i1 // b: bool
+        %s81 = sigi.push %s80, %v57_b: i1 // push b
         // unary_!
-        %v34 = arith.constant 1: i1
-        %s46, %v35 = sigi.pop %s45: i1
-        %v36 = arith.xori %v34, %v35: i1
-        %s47 = sigi.push %s46, %v36: i1
-        %s48, %v37 = sigi.pop %s47: i1 // pop intrinsic
-        return %s48: !sigi.stack
+        %v58 = arith.constant 1: i1
+        %s82, %v59 = sigi.pop %s81: i1
+        %v60 = arith.xori %v58, %v59: i1
+        %s83 = sigi.push %s82, %v60: i1
+        %s84, %v61 = sigi.pop %s83: i1 // pop intrinsic
+        return %s84: !sigi.stack
     }
 }
