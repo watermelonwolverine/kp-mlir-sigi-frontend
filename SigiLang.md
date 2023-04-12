@@ -23,8 +23,8 @@ Sigi tokens are the following:
   - numbers (decimal only): `0|[1-9][0-9]*`
   - booleans: `true`, `false`
   - strings: double quoted, like `"abc"`, `""`. Supported escapes are `\n`, `\r`, `\"`, `\\`.
-- keywords: `if`, `elif`, `else`, `func`
-- separator: `;;`, and usual punctuation
+- keywords: `if`, `elif`, `else`, `let`
+- separators: `;;`, and usual punctuation
 
 Comments are end-of-line and start with `#`
 
@@ -102,7 +102,7 @@ This convention allows easily seeing how the stack changes when the function is 
 Most types are singular and cannot have subtypes or supertypes.
 However, defining a subtyping relation on stack types allows for more flexibility when declaring and using functions.
 
-> Given types $s$ and $t$, $s <: t$ iff $s = t$, or $s = (\mathbf{a} \to \mathbf{b}), t = (\mathbf{c)\to\mathbf{d})$ and there exists a substitution $\theta$ such that $\theta\mathbf{b} <: \mathbf{d}$ and $\theta\mathbf{a} >: \mathbf{c}$.
+> Given types $s$ and $t$, $s <: t$ iff $s = t$, or $s = (\mathbf{a} \to \mathbf{b}), t = (\mathbf{c}\to\mathbf{d})$ and there exists a substitution $\theta$ such that $\theta\mathbf{b} <: \mathbf{d}$ and $\theta\mathbf{a} >: \mathbf{c}$.
 
 This is the classic subtyping rule for function types, whereby subtypes of a function type are the function types of more general functions, and supertypes are more specific.
 The substitution thing has to do with generic functions.

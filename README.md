@@ -8,7 +8,7 @@ Compilation of Sigi code to an executable is done via [MLIR](mlir.llvm.org/).
 This frontend can emit MLIR code that uses the `sigi` and `closure` dialects of `sigi-mlir`.
 These dialects, along with the rest of the compilation pipeline, are defined in the [`sigi-mlir` repo](https://github.com/tud-ccc/kp-mlir-sigi-mlir).
 
-Note: the [`sigi` dialect reference](SigiDialectSpec.md) is in this repo.
+Note: the [`sigi` dialect reference](CompilationDetails.md#sigi-dialect-spec) is in this repo.
 
 # Requirements
 
