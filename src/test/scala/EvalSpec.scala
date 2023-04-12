@@ -24,10 +24,10 @@ class EvalSpec extends AnyFunSuite {
   }
 
   checkResult("1 2", List(VNum(2), VNum(1)))
-  checkResult("{->a,b; b} -> snd; 1 2 snd", List(VNum(2)))
-  checkResult("{->a,b; b} -> snd; 1 (2 snd)", List(VNum(2)))
+  checkResult("{->a,b; b} -> \\snd; 1 2 snd", List(VNum(2)))
+  checkResult("{->a,b; b} -> snd; 1 (2 snd apply)", List(VNum(2)))
 
-  checkResult("\"a\" 2 {->a,b; b} -> snd; snd", List(VNum(2)))
+  checkResult("\"a\" 2 {->a,b; b} -> \\snd; snd", List(VNum(2)))
   checkResult("2 pop", List())
   checkResult("2 dup pop", List(VNum(2)))
 
