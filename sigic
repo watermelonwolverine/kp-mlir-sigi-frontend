@@ -1,0 +1,65 @@
+#!/bin/bash
+# 
+
+
+POSITIONAL_ARGS=()
+USAGE="Usage: $0 [-o FILE] [FILE | -e EXPR]"
+
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    -e|--expr)
+      EXPR="$2"
+      shift # past argument
+      shift # past value
+      ;;
+    --output|-o)
+      OUTPUT="$2"
+      shift # past argument
+      shift # past value
+      ;;
+    -*|--*)
+      echo "Unknown option $1"
+      echo $USAGE
+      exit 1
+      ;;
+    *)
+      POSITIONAL_ARGS+=("$1") # save positional arg
+      shift # past argument
+      ;;
+  esac
+done
+
+tmp=$(mktemp -d)
+
+if [[ -z ${FILE+x} && -z ${EXPR+x} ]]; then
+    # both are missing
+    echo $USAGE
+    exit 1
+elif [[ -n ${FILE+x} && -n ${EXPR+x} ]]; then
+    # both are set
+    echo $USAGE
+    exit 1
+elif [[ -n ${FILE+x} ]]; then
+    basename=$(basename "$FILE")
+    FILEBASE=${basename%.*} # file name without extension
+    FILE=$(realpath "$FILE")
+else
+    # we have an expr
+    FILEBASE="sigiexpr"
+    FILE="$tmp/$FILEBASE.sigi"
+    echo "$EXPR" > "$FILE"
+fi
+
+
+echo "Working in $tmp... ($filebase)"
+
+
+set -e
+just -f sigi-frontend/justfile sigiToMlir "$FILE" > "$tmp/$FILEBASE.mlir"
+just -f sigi-mlir/justfile sigiToLlvmIr "$tmp/$FILEBASE.mlir"
+
+EXEC=${OUTPUT:-./$FILEBASE}
+
+cp $tmp/$FILEBASE.exe $EXEC
+echo "Successfully compiled $EXEC"
+
