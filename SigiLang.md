@@ -23,8 +23,8 @@ Sigi tokens are the following:
   - numbers (decimal only): `0|[1-9][0-9]*`
   - booleans: `true`, `false`
   - strings: double quoted, like `"abc"`, `""`. Supported escapes are `\n`, `\r`, `\"`, `\\`.
-- keywords: `if`, `elif`, `else`, `func`
-- separator: `;;`, and usual punctuation
+- keywords: `if`, `elif`, `else`, `let`
+- separators: `;;`, and usual punctuation
 
 Comments are end-of-line and start with `#`
 
