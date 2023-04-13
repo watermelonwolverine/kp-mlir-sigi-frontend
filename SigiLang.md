@@ -147,10 +147,14 @@ Since the intermediate `int` produced by `e1` is immediately consumed by `e2`, i
 > Assume $e_1: a_1,\ldots,a_n \to b_1,\ldots,b_m$ and $e_2: c_1,\ldots,c_t \to d_1,\ldots,d_s$. Let $q = \min (m,t)$. 
 Assume, to simplify, that all the $a_i, b_i, c_i, d_i$ are either data types or type variables, but not row variables (see [below](#row-polymorphic-types)).
 Then $e_1\ e_2$ is well-typed if there exists a substitution $\theta$ such that for all $k$, $0 \leq k < q$, we have 
-$$\theta\mathbf{c}_{t-k} <: \theta\mathbf{b}_{m-k}$$, where $<:$ is the [subtyping](#subtyping) relation.
+>
+> $$\theta\mathbf{c}_{t-k} <: \theta\mathbf{b}_{m-k},$$
+>
+> where $<:$ is the [subtyping](#subtyping) relation.
 If that is so, then the type of the term is given by 
-$$e_1\ e_2 : \theta\mathbf{a}, \theta(\mathbf{c}_i)_{i < {t-q}} \to \theta(\mathbf{b}_j)_{{m-q}\leq j}, \theta\mathbf{d}.$$
-
+>
+> $$e_1\ e_2 : \theta\mathbf{a}, \theta(\mathbf{c}_i)_{i < {t-q}} \to \theta(\mathbf{b}_j)_{{m-q}\leq j}, \theta\mathbf{d}.$$
+>
 The rule allows "spilling" of arguments that are not relevant to the composition rule, for instance, if `e1: 'a -> 'a, int` and `e2: -> str`, `e1 e2` is still well-typed, even though `e2` does not consume the results of `e1`. The composed type is `'a -> 'a, int, str`.
 
 #### Scoping and the composition rule
