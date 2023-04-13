@@ -105,7 +105,7 @@ However, defining a subtyping relation on stack types allows for more flexibilit
 
 This is the classic subtyping rule for function types, whereby subtypes of a function type are the function types of more general functions, and supertypes are more specific.
 The substitution thing has to do with generic functions.
-The type $s = {'}a, {'}b -> {'}a$ is more general than $t = {'}c, {'}c -> {'}c$, because $s$ can accept more input types.
+The type $s = {'}a, {'}b \to {'}a$ is more general than $t = {'}c, {'}c \to {'}c$, because $s$ can accept more input types.
 That means it should hold that $s <: t$.
 To show this, we define a substitution $\theta$ that maps both `'a` and `'b` to `'c`.
 It then holds that $\theta s = t$, so $\theta s <: t$ and so $s <: t$.
