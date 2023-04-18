@@ -1,0 +1,15 @@
+# ^ error: 2 errors occurred
+
+let one = 1;;
+let fwd = other;;
+let other: -> int = 2;;
+
+
+let fwd_illegal = illegal;;
+#                 ^ error: Illegal forward reference to function 'illegal' with inferred type
+let illegal = 2;;
+
+let illegalRecursion = 1 illegalRecursion;;
+#                        ^ error: Illegal recursive call to function 'illegalRecursion' with inferred type
+
+one

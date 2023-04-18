@@ -4,7 +4,7 @@ package de.cfaed.sigi
 
 package types {
 
-  import ast.*
+  import ast.{KFunDef, *}
   import repl.{Env, VFun}
   import types.StackType.canonicalize
 
@@ -734,17 +734,26 @@ package types {
       case KBlock(stmts) =>
 
         // first add all explicitly typed funs to the environment
-        val incompleteDefs = stmts.collect {
+        val explicitlyTypedDefs = stmts.collect {
           case KFunDef(id, Some(astTy), _) => resolveFunType(env)(astTy).map(VarBinding(id, _))
         }.flattenList.map(env.addBindings)
 
 
-        var runningEnv = incompleteDefs match
+        var runningEnv = explicitlyTypedDefs match
           case Left(err) => return Left(err)
           case Right(defs) => defs
 
+        // add incomplete bindings for better error messages
+        stmts.foreach {
+          case KFunDef(id, None, _) =>
+            runningEnv = runningEnv.addIncompleteBinding(id, SigiTypeError.illegalFwdReferenceToFunWithInferredType)
+          case _ =>
+        }
+
         val typedStmts = ListBuffer[TypedStmt]()
         val errors = ListBuffer[SigiTypeError]()
+        // then for each statement, type it and add its binding
+        // to the env for the next statements
         for (stmt <- stmts) {
           typeStatement(runningEnv)(stmt) match
             case Left(error) =>

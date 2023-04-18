@@ -1,0 +1,15 @@
+# ^ error: 2 errors occurred
+
+let abc = 1 2 3;;
+let popAll: bool, int, int -> = pop pop pop;;
+
+let err1 =
+  abc popAll;;
+# ^ error: Mismatched types: int is not compatible with bool
+
+let err2 =
+  abc popAll;;
+# ^ error: Mismatched types: int is not compatible with bool
+
+
+2

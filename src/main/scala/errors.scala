@@ -9,12 +9,14 @@ import scala.util.parsing.input.{NoPosition, Position, Positional}
 
 
 sealed abstract class SigiError(private val msg: String) extends Positional {
-  private val causes = ListBuffer[SigiError]()
+  private val _causes = ListBuffer[SigiError]()
 
   protected def errorType: String
 
+  def shortMessage: String = msg
+
   private def causesToString(sb: StringBuilder, indent: Int = 0): Unit = {
-    causes.foreach { e =>
+    _causes.foreach { e =>
       sb.append(e.msg.indent(indent)).append("\n")
         .append(e.pos.longString.indent(indent)).append("\n")
 
@@ -33,13 +35,23 @@ sealed abstract class SigiError(private val msg: String) extends Positional {
   }
 
   def addCause(sigiError: SigiError): this.type = {
-    causes += sigiError
+    _causes += sigiError
     this
   }
 
   def addCauses(sigiError: IterableOnce[SigiError]): this.type = {
-    causes ++= sigiError
+    _causes ++= sigiError
     this
+  }
+
+  def allErrors: List[SigiError] = {
+    def collectCausesRec(list: ListBuffer[SigiError])(e: SigiError): Unit = {
+      list += e
+      e._causes.foreach(collectCausesRec(list))
+    }
+    val lb = ListBuffer[SigiError]()
+    collectCausesRec(lb)(this)
+    lb.toList
   }
 }
 
@@ -98,11 +110,11 @@ object SigiTypeError {
     )
 
   def illegalFwdReferenceToFunWithInferredType(funcId: FuncId): SigiTypeError = SigiTypeError(
-    s"Illegal forward reference to function ${funcId.sourceName} with inferred type"
+    s"Illegal forward reference to function '${funcId.sourceName}' with inferred type"
     )
 
   def illegalRecursionWithInferredType(funcId: FuncId): SigiTypeError = SigiTypeError(
-    s"Illegal recursive call to function ${funcId.sourceName} with inferred type"
+    s"Illegal recursive call to function '${funcId.sourceName}' with inferred type"
     )
 
   def mainExprConsumesElements(stackType: StackType): SigiTypeError = SigiTypeError(

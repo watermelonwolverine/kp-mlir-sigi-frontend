@@ -1,6 +1,7 @@
 package de.cfaed.sigi
 
 import scala.collection.mutable.ListBuffer
+import scala.util.parsing.input.Position
 
 extension[A] (self: A)
   /** Print and pass. Useful for debugging. */
@@ -35,3 +36,10 @@ extension[A] (self: List[A])
   def splitAtRight(numElemsRight: Int): (List[A], List[A]) =
     val split = math.max(self.length - numElemsRight, 0)
     self.splitAt(split)
+
+given Ordering[Position] with
+  override def compare(x: Position, y: Position): Int = 
+    if x < y then -1
+    else if y < x then +1
+    else 0
+  
