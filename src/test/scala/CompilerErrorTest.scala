@@ -30,17 +30,24 @@ class CompilerErrorTest extends AnyFunSuite:
       }
 
       // comments that match this represent compiler messages
-      val commentRegex = "^((?:#|//)\\s*+)\\^\\s+(warn|error):(.*)$".r
+      val commentRegex = "((?:#|//)\\s*+)([\\^v]<?)\\s+(warn|error):(.*)$".r
 
       val specs = getSource.getLines().zipWithIndex.flatMap { (line, lineNo) =>
         commentRegex.findFirstMatchIn(line).map { rmatch =>
-          val columnNo = rmatch.group(1).length + 1 // cols are 1-based
-          val message = rmatch.group(3).trim
-          val kind = rmatch.group(2) match
+          val columnNo = rmatch.start + rmatch.group(1).length + 1 // cols are 1-based
+          val (actualLine, actualCol) = rmatch.group(2) match
+            case "^" => (lineNo, columnNo)
+            case "v" => (lineNo + 2, columnNo)
+            // These variants allow matching on the first column,
+            // which is taken by the comment delimiter.
+            case "^<" => (lineNo, 1)
+            case "v<" => (lineNo + 2, 1)
+          val message = rmatch.group(4).trim
+          val kind = rmatch.group(3) match
             case "warn" => MsgType.Warning
             case "error" => MsgType.Error
 
-          MsgSpec(lineNo, columnNo, message, kind)
+          MsgSpec(actualLine, actualCol, message, kind)
         }
       }.toList
 
@@ -71,6 +78,7 @@ class CompilerErrorTest extends AnyFunSuite:
 
   doCompilationTest("fwdRefs")
   doCompilationTest("inference")
+  doCompilationTest("parseError0")
 
 
 enum MsgType:

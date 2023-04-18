@@ -228,16 +228,18 @@ package ast {
       }
 
     private def primary: Parser[KExpr] =
-      TRUE ^^ { tok => PushPrim(types.KBool, true).setPos(tok.pos) }
-        | FALSE ^^ { tok => PushPrim(types.KBool, false).setPos(tok.pos) }
-        | identAsFunApply
-        | accept("number", { case n@NUMBER(v) => PushPrim(types.KInt, v).setPos(n.pos) })
-        | accept("string", { case s@STRING(v) => PushPrim(types.KString, v).setPos(s.pos) })
-        | BACKSLASH ~> (opAsFunApply | identAsFunApply) ^^ Quote.apply
-        | (LBRACKET ~ repsep(expr, COMMA) <~ RBRACKET ^^ { case bracket ~ list => PushList(list).setPos(bracket.pos) })
-        | (LPAREN ~> (expr | opAsFunApply) <~ RPAREN)
-        | thunk
-        | ifelse
+      positioned(
+        TRUE ^^^ PushPrim(types.KBool, true)
+          | FALSE ^^^ PushPrim(types.KBool, false)
+          | identAsFunApply
+          | accept("number", { case n@NUMBER(v) => PushPrim(types.KInt, v) })
+          | accept("string", { case s@STRING(v) => PushPrim(types.KString, v) })
+          | BACKSLASH ~> (opAsFunApply | identAsFunApply) ^^ Quote.apply
+          | (LBRACKET ~> repsep(expr, COMMA) <~ RBRACKET ^^ PushList.apply)
+          | (LPAREN ~> (expr | opAsFunApply) <~ RPAREN)
+          | thunk
+          | ifelse
+        )
 
     private def varNameDecl: Parser[VarNameDecl] =
       BACKSLASH.? ~ id ^^ {

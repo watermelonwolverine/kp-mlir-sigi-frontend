@@ -42,7 +42,6 @@ package monomorphize {
     */
   def monomorphize(module: TModule)(using debug.TypeInfLogger): Either[SigiCompilationError, EmittableModule] = {
 
-
     val ctx = new InstantiationContext(module)
     for {
       newMainExpr <- ctx.rewriteExpr(module.mainExpr)
@@ -68,9 +67,6 @@ package monomorphize {
       case _ => false
   }
 
-  object InstantiationContext {
-    def newRootCtx(module: TModule)(using debug.TypeInfLogger): InstantiationContext = new InstantiationContext(module)
-  }
 
   private class InstantiationContext(
     /** Module context. */
@@ -184,7 +180,8 @@ package monomorphize {
         }
       case TPushQuote(term) =>
         // For quotes, we have to make sure that all captured values are ground.
-        // TODO generic quotes will surely be a problem.
+        // TODO generic quotes will surely be a problem, because type information
+        //  of the call site is not available without flow analysis.
         rewriteExpr(term).map(TPushQuote.apply)
       case _ => Right(expr)
 

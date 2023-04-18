@@ -1,4 +1,4 @@
-# ^ error: 2 errors occurred
+# ^< error: 2 errors occurred
 
 let one = 1;;
 let fwd = other;;
