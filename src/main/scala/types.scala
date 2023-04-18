@@ -412,6 +412,22 @@ package types {
         case _ =>
     }
 
+    /**
+      * Check current constraints on known ivars/rivars for inconsistencies.
+      * These cause normal type errors. This should be done regularly during
+      * inference to abort asap and give a specific and positioned message.
+      */
+    private[types] def incorporateConstraints(): Option[SigiTypeError] = {
+      for {
+        rivar <- myRIvars
+        alias <- rivar.aliases
+        if alias.instantiation != null && alias.instantiation.contains(rivar)
+      } {
+        return Some(SigiTypeError.cannotUnify(List(rivar), alias.instantiation))
+      }
+      None
+    }
+
     /** Check that the given type is compatible with the bound.
       * This means that the type is at least as general as the bound.
       *
@@ -914,7 +930,9 @@ package types {
 
 
           log.unificationRequest(ta, tb)
-          scope.ctx.unify(ta.produces, tb.consumes).map(_.setPos(node.pos))
+          scope.ctx.unify(ta.produces, tb.consumes)
+            .orElse(scope.ctx.incorporateConstraints())
+            .map(_.setPos(node.pos))
             .toLeft({
               // this only replaces ivars that have an instantiation but may keep other ivars live.
               val ground = scope.ctx.partialGround

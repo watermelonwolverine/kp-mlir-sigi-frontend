@@ -5,15 +5,16 @@ import org.scalatest.funsuite.AnyFunSuite
 
 import java.io.{ByteArrayOutputStream, PrintStream}
 import scala.io.Source
+import scala.util.matching.Regex
 import scala.util.parsing.input.NoPosition
 
 /**
   * @author Clément Fournier &lt;clement.fournier@tu-dresden.de&gt;
   */
 class CompilerErrorTest extends AnyFunSuite:
-  case class MsgSpec(line: Int, column: Int, message: String, msgType: MsgType) {
+  case class MsgSpec(line: Int, column: Int, msgRegex: Regex, msgType: MsgType) {
     def doMatch(err: SigiError): Unit = {
-      assertResult(message)(err.shortMessage)
+      assert(msgRegex.matches(err.shortMessage.trim), "Message should match " + msgRegex)
       if (err.pos != NoPosition) {
         assertResult(line)(err.pos.line)
         assertResult(column)(err.pos.column)
@@ -47,7 +48,7 @@ class CompilerErrorTest extends AnyFunSuite:
             case "warn" => MsgType.Warning
             case "error" => MsgType.Error
 
-          MsgSpec(actualLine, actualCol, message, kind)
+          MsgSpec(actualLine, actualCol, message.r, kind)
         }
       }.toList
 
@@ -72,7 +73,7 @@ class CompilerErrorTest extends AnyFunSuite:
     doTest(fileName) { source =>
       val os = new ByteArrayOutputStream()
       val ps = new PrintStream(os)
-      emitmlir.parseSigiAndEmitMlir(ps)(source)(using DebugTypeInfLogger())
+      emitmlir.parseSigiAndEmitMlir(ps)(source)(using NoopLogger)
     }
   }
 

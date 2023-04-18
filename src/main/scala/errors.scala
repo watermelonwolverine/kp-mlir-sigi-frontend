@@ -130,8 +130,11 @@ object SigiTypeError {
     )
 
   def cannotUnify(a: List[KStackTypeItem], b: List[KStackTypeItem]): SigiTypeError = SigiTypeError(
-    s"Mismatched types: $a is not compatible with $b"
+    s"Mismatched types: ${fmtListOfTypes(a)} is not compatible with ${fmtListOfTypes(b)}"
     )
+
+  private def fmtListOfTypes(list: List[KStackTypeItem]): String =
+    if list.isEmpty then "[]" else list.mkString(", ")
 
   def cannotBeListItem(t1: StackType | KStackTypeItem): SigiTypeError = SigiTypeError(
     s"Type cannot be a list item: $t1 (quote expression to box it)"

@@ -140,7 +140,11 @@ package ast {
   }
 
   case class Chain(a: KExpr, b: KExpr) extends KExpr {
-    setPos(a.pos)
+  }
+
+  object Chain {
+    def createWithDerivedPos(a: KExpr, b: KExpr): Chain = Chain(a, b).setPos(a.pos)
+
   }
 
   case class PushPrim[T](ty: KPrimitive[T], value: T) extends KExpr
@@ -215,8 +219,8 @@ package ast {
         ) ^^ {
         case (ifTok: IF) ~ (cond: Option[KExpr]) ~ (thenThunk: Quote) ~ (elifs: List[ELIF ~ KExpr ~ Quote]) ~ (elseThunk: Quote) =>
           def makeIf(thenThunk: Quote, elseThunk: Quote, position: Position): KExpr = {
-            val ifFunction = Chain(FunApply("cond").setPos(position), FunApply("apply").setPos(position))
-            Chain(Chain(thenThunk, elseThunk), ifFunction)
+            val ifFunction = Chain(FunApply("cond").setPos(position), FunApply("apply").setPos(position)).setPos(position)
+            Chain(Chain(thenThunk, elseThunk).setPos(position), ifFunction).setPos(position)
           }
 
           val foldedElseIf = elifs.foldRight[Quote](elseThunk) {
@@ -267,7 +271,7 @@ package ast {
 
     private def exprSeq: Parser[KExpr] =
       unary ~ rep(primary) ^^ {
-        case fst ~ rest => (fst :: rest).reduceLeft(Chain.apply)
+        case fst ~ rest => (fst :: rest).reduceLeft(Chain.createWithDerivedPos)
       }
 
     private def multexpr: Parser[KExpr] = makeBinary(exprSeq, OP("*") | OP("/") | OP("%"))
