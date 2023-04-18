@@ -1,6 +1,6 @@
 package de.cfaed.sigi
 
-import de.cfaed.sigi.debug.NoopLogger
+import de.cfaed.sigi.debug.{DebugTypeInfLogger, NoopLogger}
 import org.scalatest.funsuite.AnyFunSuite
 
 import java.io.{ByteArrayOutputStream, PrintStream}
@@ -72,13 +72,14 @@ class CompilerErrorTest extends AnyFunSuite:
     doTest(fileName) { source =>
       val os = new ByteArrayOutputStream()
       val ps = new PrintStream(os)
-      emitmlir.parseSigiAndEmitMlir(ps)(source)(using NoopLogger)
+      emitmlir.parseSigiAndEmitMlir(ps)(source)(using DebugTypeInfLogger())
     }
   }
 
   doCompilationTest("fwdRefs")
   doCompilationTest("inference")
   doCompilationTest("parseError0")
+  doCompilationTest("impossibleGround")
 
 
 enum MsgType:

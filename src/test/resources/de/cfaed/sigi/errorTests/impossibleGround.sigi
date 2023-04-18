@@ -1,0 +1,10 @@
+
+let loop: int, int -> =
+    -> i, running;
+    if (i = 0) pass
+    else
+        i pp
+        // ^ error: aouhasoneu
+        (i - 1) (running * 10) loop;;
+
+10 1 loop
