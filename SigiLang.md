@@ -26,7 +26,7 @@ Sigi tokens are the following:
 - keywords: `if`, `elif`, `else`, `let`
 - separators: `;;`, and usual punctuation
 
-Comments are end-of-line and start with `#`
+Comments are end-of-line and start with `#` or `//`.
 
 ### Expressions
 
@@ -127,7 +127,7 @@ Type inference is performed while type-checking expressions as explained in the 
 
 ### Typing and evaluation
 
-> - `{ e }` creates a function value whose expansion is the term `e` and pushes it on the stack. If $\mathtt{e}: t$, then $\mathtt{\{\,e\,\}} :\, \to t$.
+> - `{ e }` creates a function value whose expansion is the term `e` and pushes it on the stack. If $\mathtt{e}: t$, then $\mathtt{\lbrace e \rbrace} : \to t$.
 > - `-> x;` pops the value on top of the stack and binds it to a name in the enclosing scope. The type of this expression is ${'}a \to$, where ${'}a$ is a fresh type variable.
 > - `-> \x;` pops the value on top of the stack and binds it to a name in the enclosing scope.
 > The name binds to a function of maximally general type $({'}A \to {'}B)$ (see [row polymorphism](#row-polymorphic-types)). The type of this expression is therefore $({'}A \to {'}B) \to$.
