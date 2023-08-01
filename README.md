@@ -1,6 +1,6 @@
 # Sigi Frontend
 
-This is the frontend for the Sigi language (see [language reference](/SigiLang.md)).
+This is the frontend for the Sigi language compiler (see [language reference](/SigiLang.md)).
 It implements lexing, parsing, and semantic analysis like type inference.
 It also contains an interpreter (and REPL) to easily execute Sigi expressions.
 
