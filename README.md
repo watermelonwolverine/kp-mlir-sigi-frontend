@@ -44,3 +44,13 @@ Those commands use the binaries built with `just b`. Don't forget to run `just b
 
 All of those can be run from within an IDE by finding the correct `@main` function. This allows debugging and keeps your class files fresh.
 
+# VSCode Setup
+- Install DevContainer extension
+- Go into .devcontainer
+- Execute `just prepareDockerfile`
+- Check out the generated Dockerfile
+- Build DevContainer: Ctrl+Shift+P > "Dev Container: Rebuild and Reopen in Container"
+- After the container build has succeeded (will take a while) make sure all extensions are enabled in the Dev Container
+  - Scala Syntax (Official)
+  - Scala (Metals)
+- Import build: Ctrl+Shift > "Metals: Import Build"

@@ -1,0 +1,13 @@
+{
+    "build": {
+        "dockerfile": "Dockerfile"
+    },
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "scalameta.metals",
+                "donjayamanne.githistory"
+            ]
+        }
+    }
+}

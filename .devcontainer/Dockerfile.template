@@ -1,0 +1,28 @@
+FROM __BASE_IMAGE__
+
+## See https://stackoverflow.com/questions/8671308/non-interactive-method-for-dpkg-reconfigure-tzdata
+## For apt to be noninteractive
+ENV DEBIAN_FRONTEND noninteractive
+ENV DEBCONF_NONINTERACTIVE_SEEN true
+
+## Preesed tzdata (so it doesn't ask us during setup)
+RUN truncate -s0 /tmp/preseed.cfg &&\
+    echo "tzdata tzdata/Areas select Europe" >> /tmp/preseed.cfg &&\
+    echo "tzdata tzdata/Zones/Europe select Berlin" >> /tmp/preseed.cfg &&\
+    debconf-set-selections /tmp/preseed.cfg &&\
+    rm -f /etc/timezone /etc/localtime &&\
+## Update package index
+    apt update &&\
+## install tzdata
+    apt install -y tzdata &&\
+## Installing all the required packages
+    apt install -y git nano openjdk-17-jdk scala &&\
+# Adding a user with the same name as the host user so the files created inside the container aren't owned by root
+    useradd -m __USER__ &&\
+    usermod -aG sudo __USER__ &&\
+# Setting the password for the newly added user inside the container to 'password'
+    echo "__USER__:password"|chpasswd
+
+# Setting bash as shell (sh is used by default)
+ENV SHELL /bin/bash
+USER __USER__
