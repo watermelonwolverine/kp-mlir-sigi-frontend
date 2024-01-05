@@ -3,9 +3,10 @@
     {
         "type": "scala",
         "request": "launch",
-        "name": "Debug Repl",
-        "mainClass": "de.cfaed.sigi.repl.repl",
-        "args": [],
+        "name": "Debug Interpret Fibonacci",
+        "mainClass": "de.cfaed.sigi.repl.interpretSigi",
+        "internalConsoleOptions": "openOnSessionStart",
+        "args": ["src/test/resources/de/cfaed/sigi/mlirTests/fibonacci.sigi"],
         "jvmOptions": [],
         "env": {}
     }
