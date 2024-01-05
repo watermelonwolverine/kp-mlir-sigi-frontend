@@ -40,8 +40,8 @@ RUN set -e &&\
     # get native image
     gu install native-image
 
-## SBT installs a bunch of stuff during first execution
-RUN sbt --version
+RUN source "$HOME/.sdkman/bin/sdkman-init.sh" &&\
+    sbt --version
 
 # Set bash as default shell (sh is used by default)
 ENV SHELL /bin/bash
