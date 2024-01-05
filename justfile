@@ -42,9 +42,31 @@ installRequirementsWithSdkman:
     # get native image
     gu install native-image
 
-cleanBloop:
+cleanMetalsFiles:
     #!/bin/bash
     todelete=$(find . -wholename "**/.bloop")
-    rm -r $todelete
+    if [  -n "${todelete}" ]; then 
+        rm -r ${todelete}
+    fi
+    
+    todelete=$(find . -wholename "**/metals.sbt")
+    if [  -n "${todelete}" ]; then 
+        rm -r ${todelete}
+    fi
+
+    todelete=$(find . -wholename "**/.metals")
+    if [  -n "${todelete}" ]; then 
+        rm -r ${todelete}
+    fi
+    
+
     echo "Remember to import build"
+    
+
+cleanTargetFolders:
+    #!/bin/bash
+    todelete=$(find . -wholename "**/target")
+    if [  -n "${todelete}" ]; then 
+        rm -r ${todelete}
+    fi
 
