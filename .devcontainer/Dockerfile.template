@@ -5,23 +5,43 @@ FROM __BASE_IMAGE__
 ENV DEBIAN_FRONTEND noninteractive
 ENV DEBCONF_NONINTERACTIVE_SEEN true
 
-## Installing all the required packages
+## Install some general tools
 RUN apt update &&\
-    apt install -y git nano openjdk-17-jdk openjdk-17-source scala &&\
+    apt install -y git nano curl unzip zip &&\
     rm -rf /var/lib/apt/lists/*
 
-## Installing Just
-RUN apt update &&\
-    apt install -y curl &&\
-    curl --proto '=https' --tlsv1.2 -sSf https://just.systems/install.sh | bash -s -- --to /usr/bin &&\
+## Install Just
+RUN curl --proto '=https' --tlsv1.2 -sSf https://just.systems/install.sh | bash -s -- --to /usr/bin &&\
     rm -rf /var/lib/apt/lists/*
 
-# Adding a user with the same name as the host user so the files created inside the container aren't owned by root
+## Add a user with the same name as the host user so the files created inside the container aren't owned by root
 RUN useradd -m __USER__ &&\
     usermod -aG sudo __USER__ &&\
-# Setting the password for the newly added user inside the container to 'password'
+## Set the password for the newly added user inside the container to 'password'
     echo "__USER__:password"|chpasswd
 
-# Setting bash as shell (sh is used by default)
-ENV SHELL /bin/bash
+## Need to install and use sdkman as __USER__
 USER __USER__
+
+## Use bash instead of sh (Otherwise sdkman installation fails)
+SHELL ["/bin/bash", "-c"]
+
+## Install sdkman
+RUN sdkman_auto_answer=true curl -s "https://get.sdkman.io" | bash
+
+## Use sdkman to install required dev tools
+RUN set -e &&\
+    source "$HOME/.sdkman/bin/sdkman-init.sh" &&\
+    # get scala &&\
+    sdk i scala 3.2.1 &&\
+    sdk i sbt &&\
+    # get graalvm
+    sdk i java 22.3.r19-grl &&\
+    # get native image
+    gu install native-image
+
+## SBT installs a bunch of stuff during first execution
+RUN sbt --version
+
+# Set bash as default shell (sh is used by default)
+ENV SHELL /bin/bash
