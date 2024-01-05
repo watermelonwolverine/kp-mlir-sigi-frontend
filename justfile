@@ -42,4 +42,9 @@ installRequirementsWithSdkman:
     # get native image
     gu install native-image
 
+cleanBloop:
+    #!/bin/bash
+    todelete=$(find . -wholename "**/.bloop")
+    rm -r $todelete
+    echo "Remember to import build"
 

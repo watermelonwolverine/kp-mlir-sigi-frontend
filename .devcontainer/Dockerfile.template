@@ -5,21 +5,16 @@ FROM __BASE_IMAGE__
 ENV DEBIAN_FRONTEND noninteractive
 ENV DEBCONF_NONINTERACTIVE_SEEN true
 
-## Preesed tzdata (so it doesn't ask us during setup)
-RUN truncate -s0 /tmp/preseed.cfg &&\
-    echo "tzdata tzdata/Areas select Europe" >> /tmp/preseed.cfg &&\
-    echo "tzdata tzdata/Zones/Europe select Berlin" >> /tmp/preseed.cfg &&\
-    debconf-set-selections /tmp/preseed.cfg &&\
-    rm -f /etc/timezone /etc/localtime &&\
-## Update package index
-    apt update &&\
-## install tzdata
-    apt install -y tzdata &&\
 ## Installing all the required packages
-    apt install -y git nano openjdk-17-jdk scala
+RUN apt update &&\
+    apt install -y git nano openjdk-17-jdk openjdk-17-source scala &&\
+    rm -rf /var/lib/apt/lists/*
 
 ## Installing Just
-RUN curl --proto '=https' --tlsv1.2 -sSf https://just.systems/install.sh | bash -s -- --to /usr/bin
+RUN apt update &&\
+    apt install -y curl &&\
+    curl --proto '=https' --tlsv1.2 -sSf https://just.systems/install.sh | bash -s -- --to /usr/bin &&\
+    rm -rf /var/lib/apt/lists/*
 
 # Adding a user with the same name as the host user so the files created inside the container aren't owned by root
 RUN useradd -m __USER__ &&\
