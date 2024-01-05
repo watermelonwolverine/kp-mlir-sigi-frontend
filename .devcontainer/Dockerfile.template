@@ -16,9 +16,13 @@ RUN truncate -s0 /tmp/preseed.cfg &&\
 ## install tzdata
     apt install -y tzdata &&\
 ## Installing all the required packages
-    apt install -y git nano openjdk-17-jdk scala &&\
+    apt install -y git nano openjdk-17-jdk scala
+
+## Installing Just
+RUN curl --proto '=https' --tlsv1.2 -sSf https://just.systems/install.sh | bash -s -- --to /usr/bin
+
 # Adding a user with the same name as the host user so the files created inside the container aren't owned by root
-    useradd -m __USER__ &&\
+RUN useradd -m __USER__ &&\
     usermod -aG sudo __USER__ &&\
 # Setting the password for the newly added user inside the container to 'password'
     echo "__USER__:password"|chpasswd
