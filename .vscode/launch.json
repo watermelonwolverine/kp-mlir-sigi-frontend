@@ -1,0 +1,13 @@
+{
+    "configurations": [
+    {
+        "type": "scala",
+        "request": "launch",
+        "name": "Debug Repl",
+        "mainClass": "de.cfaed.sigi.repl.repl",
+        "args": [],
+        "jvmOptions": [],
+        "env": {}
+    }
+    ]
+}
