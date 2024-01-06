@@ -2,11 +2,11 @@
     "version": "2.0.0",
     "tasks": [
         {
-            "label": "Start repl",
-            "command": "sbt",
+            "label": "Launch repl",
+            "command": "target/universal/stage/bin/repl",
             "type": "shell",
             "args": [
-                "\"runMain de.cfaed.sigi.repl.repl\""
+                "-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=localhost:5005"
             ],
             "isBackground": true
         }
