@@ -97,11 +97,27 @@ package builtins {
     }
   }
 
+  private def binOpStr(name: String, definition: (String, String) => String): BuiltinFunSpec = {
+    stackFun(name, types.binOpType(KString)){
+      case VString(b) :: VString(a) :: tail =>
+        val res = definition(a,b)
+        Right(VString(res) :: tail)
+    }
+  }
+
   private def unaryOp(name: String, definition: Int => Int): BuiltinFunSpec = {
     stackFun(name, types.unaryOpType(KInt)) {
       case VNum(a) :: tail =>
         val res = definition(a)
         Right(VNum(res) :: tail)
+    }
+  }
+
+  private def unaryOpStr(name: String, definition: String => String): BuiltinFunSpec = {
+    stackFun(name, types.unaryOpType(KString)) {
+      case VString(a) :: tail =>
+        val res = definition(a)
+        Right(VString(res) :: tail)
     }
   }
 
@@ -208,6 +224,7 @@ package builtins {
       binOp("*", _ * _),
       binOp("/", _ / _),
       binOp("%", _ % _),
+      binOpStr("+", _ + _),
       cmpOp("<", _ < _),
       cmpOp(">", _ > _),
       cmpOp(">=", _ >= _),
@@ -217,6 +234,7 @@ package builtins {
       unaryOp("unary_-", a => -a),
       unaryOp("unary_+", a => a),
       unaryOp("unary_~", a => ~a),
+      unaryOpStr("unary_+", a => a),
 
       boolOp("and", _ & _),
       boolOp("or", _ | _),

@@ -127,6 +127,13 @@ package repl {
       case _ => None
   }
 
+  object VString {
+    def apply(i: String): VPrimitive[String] = VPrimitive(KString, i)
+    def unapply(prim: VPrimitive[_]): Option[String] = prim match
+      case VPrimitive(KString, v) => Some(v)
+      case _ => None
+  }
+
   case class VFun(name: Option[String], t: StackType, definition: Env => EvalResult) extends KValue
   case class VList(ty: types.KList, items: List[KValue]) extends KValue
 

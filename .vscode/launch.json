@@ -5,8 +5,34 @@
         "request": "launch",
         "name": "Debug Interpret Fibonacci",
         "mainClass": "de.cfaed.sigi.repl.interpretSigi",
-        "internalConsoleOptions": "openOnSessionStart",
         "args": ["src/test/resources/de/cfaed/sigi/mlirTests/fibonacci.sigi"],
+        "jvmOptions": [],
+        "env": {}
+    },
+    {
+        "type": "scala",
+        "request": "launch",
+        "name": "Debug Interpret strConcat",
+        "mainClass": "de.cfaed.sigi.repl.interpretSigi",
+        "args": ["src/test/resources/de/cfaed/sigi/mlirTests/strConcat.sigi"],
+        "jvmOptions": [],
+        "env": {}
+    },
+    {
+        "type": "scala",
+        "request": "launch",
+        "name": "Debug Repl",
+        "mainClass": "de.cfaed.sigi.repl.repl",
+        "args": [],
+        "jvmOptions": [],
+        "env": {}
+    },
+    {
+        "type": "scala",
+        "request": "launch",
+        "name": "SigiToMLIR strConcat",
+        "mainClass": "de.cfaed.sigi.emitmlir.sigiToMlir",
+        "args": ["src/test/resources/de/cfaed/sigi/mlirTests/strConcat.sigi"],
         "jvmOptions": [],
         "env": {}
     }
