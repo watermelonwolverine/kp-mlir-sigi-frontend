@@ -1,24 +1,14 @@
 {
     "configurations": [
-        {
-            "type": "scala",
-            "request": "launch",
-            "name": "Debug Interpret Fibonacci",
-            "mainClass": "de.cfaed.sigi.repl.interpretSigi",
-            "args": [
-                "src/test/resources/de/cfaed/sigi/mlirTests/fibonacci.sigi"
-            ],
-            "jvmOptions": [],
-            "env": {},
-        },
-        {
-            "type": "scala",
-            "request": "attach",
-            "name": "Attach to repl",
-            "buildTarget": "root",
-            "hostName": "localhost",
-            "port": 5005,
-            "preLaunchTask": "Start repl"
-        }
+    {
+        "type": "scala",
+        "request": "launch",
+        "name": "Debug Interpret Fibonacci",
+        "mainClass": "de.cfaed.sigi.repl.interpretSigi",
+        "internalConsoleOptions": "openOnSessionStart",
+        "args": ["src/test/resources/de/cfaed/sigi/mlirTests/fibonacci.sigi"],
+        "jvmOptions": [],
+        "env": {}
+    }
     ]
 }
