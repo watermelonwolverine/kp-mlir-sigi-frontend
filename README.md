@@ -27,6 +27,22 @@ Once you have installed sdkman, run
 just installRequirementsWithSdkman
 ```
 
+# Alternative: VSCode Dev Container Setup
+- This route doesn't require installing sdkman or the dependencies installed using it
+- Install Docker and the DevContainer extension for VSCode
+- Go into .devcontainer
+- Execute `just prepareDockerfile`
+- Check out the generated Dockerfile
+  - You'll have to execute `just prepareDockerfile` everytime you change `Dockerfile.template`
+  - Avoid editing `Dockerfile` directly
+- Build the container: Ctrl+Shift+P > "Dev Container: Rebuild and Reopen in Container"
+- After the container build has succeeded (which will take a while) make sure all VSCode extensions are enabled inside the Dev Container. Important are:
+  - Scala Syntax (Official)
+  - Scala (Metals)
+- Import the build into metals: Ctrl+Shift+P > "Metals: Import Build"
+- Sometimes you'll need to clean the files metals has created and re-import the build
+  - This is done by executing `just cleanMetalsFiles` and then importing the build again
+
 # Summary of development commands
 
 - `just test`: build the project and run tests
@@ -44,13 +60,3 @@ Those commands use the binaries built with `just b`. Don't forget to run `just b
 
 All of those can be run from within an IDE by finding the correct `@main` function. This allows debugging and keeps your class files fresh.
 
-# VSCode Setup
-- Install DevContainer extension
-- Go into .devcontainer
-- Execute `just prepareDockerfile`
-- Check out the generated Dockerfile
-- Build DevContainer: Ctrl+Shift+P > "Dev Container: Rebuild and Reopen in Container"
-- After the container build has succeeded (will take a while) make sure all extensions are enabled in the Dev Container
-  - Scala Syntax (Official)
-  - Scala (Metals)
-- Import build: Ctrl+Shift > "Metals: Import Build"
