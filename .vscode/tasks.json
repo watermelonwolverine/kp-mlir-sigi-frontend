@@ -1,0 +1,14 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Start repl",
+            "command": "sbt",
+            "type": "shell",
+            "args": [
+                "\"runMain de.cfaed.sigi.repl.repl\""
+            ],
+            "isBackground": true
+        }
+    ]
+}
