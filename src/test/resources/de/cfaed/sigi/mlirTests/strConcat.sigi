@@ -1,5 +1,16 @@
-"World"
-"Hello" (+)
+"Hello "
+"World!" (&) 
 show
-"Hello" + "World!"
+
+"Hello " & "World!"
+show
+
+"Hello "
+{ "World" (&) }
+apply
+show
+
+let concatWorld: str -> str = "World!" (&);;
+"Hello "
+concatWorld
 show

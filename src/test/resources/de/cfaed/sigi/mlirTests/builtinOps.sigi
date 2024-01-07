@@ -13,6 +13,8 @@
   (x <= x) pop
   (x = x) pop
   (x <> x) pop
+"hello" -> y;
+  (y & y) pop
 
 true -> b;
   (!b) pop
