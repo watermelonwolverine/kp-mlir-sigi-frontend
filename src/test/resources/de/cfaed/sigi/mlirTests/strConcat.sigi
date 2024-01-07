@@ -1,16 +1,25 @@
-"Hello "
-"World!" (&) 
-show
+let helloworld0 =
+("Hello " & "World!")
+show;;
 
-"Hello " & "World!"
-show
-
+let helloworld1 = 
 "Hello "
-{ "World" (&) }
+"World!"
+(&)
+show;;
+
+let helloworld2 = 
+"Hello "
+{ "World!" (&) }
 apply
-show
+show;;
 
 let concatWorld: str -> str = "World!" (&);;
+
+let helloworld3 = 
 "Hello "
 concatWorld
-show
+show;;
+
+helloworld0 helloworld1 helloworld2 helloworld3
+
