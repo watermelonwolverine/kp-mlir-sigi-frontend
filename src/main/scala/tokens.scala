@@ -54,7 +54,9 @@ package tokens {
     def ident: Parser[ID] = """[a-zA-Z]\w*""".r ^^ ID.apply
     def tvar: Parser[TVAR] = "'[a-z][a-z0-9]*".r ^^ TVAR.apply
     def rowvar: Parser[ROWVAR] = "'[A-Z][A-Z0-9]*".r ^^ ROWVAR.apply
-    def op: Parser[OP] = "[-+*/%!~]|[<>]=?|=|<>".r ^^ OP.apply
+    // TODO refactor:
+    // ":" was added for string concatenation and can be removed once this works with "+"
+    def op: Parser[OP] = "[-+*/%!~&]|[<>]=?|=|<>".r ^^ OP.apply
     def number: Parser[NUMBER] = """(0|[1-9]\d*)""".r ^^ { a => NUMBER(a.toInt) }
     def string: Parser[STRING] =
       """"([^\\"]*+|\\[\\rn"])*"""".r ^^ {

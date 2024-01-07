@@ -255,8 +255,9 @@ package ast {
         case arrow ~ decls => NameTopN(decls.map(toStackId)).setPos(arrow.pos)
       }
 
+    // TODO refactor: Remove the OP("&") once + is used to concat strings
     private def unary: Parser[KExpr] =
-      (OP("-") | OP("+") | OP("~") | OP("!")).? ~ primary ^^ {
+      (OP("-") | OP("+") | OP("~") | OP("!") | OP("&")).? ~ primary ^^ {
         case Some(op: OP) ~ e => Chain(e, FunApply("unary_" + op.opName).setPos(op.pos))
         case None ~ e => e
       }
@@ -276,7 +277,8 @@ package ast {
 
     private def multexpr: Parser[KExpr] = makeBinary(exprSeq, OP("*") | OP("/") | OP("%"))
 
-    private def addexpr: Parser[KExpr] = makeBinary(multexpr, OP("+") | OP("-"))
+    // TODO refactor: Remove the OP("&") once + is used to concat strings
+    private def addexpr: Parser[KExpr] = makeBinary(multexpr, OP("+") | OP("-") | OP("&"))
 
     private def compexpr: Parser[KExpr] = makeBinary(addexpr, OP("<") | OP(">") | OP("<=") | OP(">=") | OP("=") | OP("<>"))
 

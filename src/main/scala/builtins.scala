@@ -224,7 +224,8 @@ package builtins {
       binOp("*", _ * _),
       binOp("/", _ / _),
       binOp("%", _ % _),
-      binOpStr("+", _ + _),
+      // Seems like overloading "+"" does not work, so I'll use ":" instead until I figure out how to overload it
+      binOpStr("&", _ + _),
       cmpOp("<", _ < _),
       cmpOp(">", _ > _),
       cmpOp(">=", _ >= _),
@@ -234,7 +235,7 @@ package builtins {
       unaryOp("unary_-", a => -a),
       unaryOp("unary_+", a => a),
       unaryOp("unary_~", a => ~a),
-      unaryOpStr("unary_+", a => a),
+      unaryOpStr("unary_&", a => a),
 
       boolOp("and", _ & _),
       boolOp("or", _ | _),
