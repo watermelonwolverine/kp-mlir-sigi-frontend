@@ -266,7 +266,7 @@ case class MlirSymbol(name: String) {
             case None => throw IllegalStateException(s"Unknown stack symbol: $binding")
 
         // builtin binary arithmetic ops and comparisons
-        case TFunApply(StackType(List(a@(KInt | KBool), b), List(c)), id: BuiltinFuncId) if a == b && BuiltinIntOps.contains(id) =>
+        case TFunApply(StackType(List(a@(KInt | KBool | KString), b), List(c)), id: BuiltinFuncId) if a == b && BuiltinIntOps.contains(id) =>
           println(s"// ${id.sourceName}")
           val pop0 = renderPop(b)
           val pop1 = renderPop(a)
@@ -411,6 +411,7 @@ case class MlirSymbol(name: String) {
       ">=" -> "arith.cmpi \"sge\",",
       "<" -> "arith.cmpi \"slt\",",
       ">" -> "arith.cmpi \"sgt\",",
+      "&" -> "sigi.concat_str",
 
       "=" -> "arith.cmpi \"eq\",",
       "<>" -> "arith.cmpi \"ne\",",
