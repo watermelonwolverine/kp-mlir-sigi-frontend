@@ -109,17 +109,29 @@ module {
         %v54 = arith.cmpi "ne", %v53, %v52: i32
         %s77 = sigi.push %s76, %v54: i1
         %s78, %v55 = sigi.pop %s77: i1 // pop intrinsic
-        %v56 = arith.constant 1: i1
-        %s79 = sigi.push %s78, %v56: i1
+        %v56 = sigi.constant "hello": !sigi.str
+        %s79 = sigi.push %s78, %v56: !sigi.str
+        // -> y;
+        %s80, %v57_y = sigi.pop %s79: !sigi.str // y: str
+        %s81 = sigi.push %s80, %v57_y: !sigi.str // push y
+        %s82 = sigi.push %s81, %v57_y: !sigi.str // push y
+        // &
+        %s83, %v58 = sigi.pop %s82: !sigi.str
+        %s84, %v59 = sigi.pop %s83: !sigi.str
+        %v60 = sigi.concat_str %v59, %v58: !sigi.str
+        %s85 = sigi.push %s84, %v60: !sigi.str
+        %s86, %v61 = sigi.pop %s85: !sigi.str // pop intrinsic
+        %v62 = arith.constant 1: i1
+        %s87 = sigi.push %s86, %v62: i1
         // -> b;
-        %s80, %v57_b = sigi.pop %s79: i1 // b: bool
-        %s81 = sigi.push %s80, %v57_b: i1 // push b
+        %s88, %v63_b = sigi.pop %s87: i1 // b: bool
+        %s89 = sigi.push %s88, %v63_b: i1 // push b
         // unary_!
-        %v58 = arith.constant 1: i1
-        %s82, %v59 = sigi.pop %s81: i1
-        %v60 = arith.xori %v58, %v59: i1
-        %s83 = sigi.push %s82, %v60: i1
-        %s84, %v61 = sigi.pop %s83: i1 // pop intrinsic
-        return %s84: !sigi.stack
+        %v64 = arith.constant 1: i1
+        %s90, %v65 = sigi.pop %s89: i1
+        %v66 = arith.xori %v64, %v65: i1
+        %s91 = sigi.push %s90, %v66: i1
+        %s92, %v67 = sigi.pop %s91: i1 // pop intrinsic
+        return %s92: !sigi.stack
     }
 }

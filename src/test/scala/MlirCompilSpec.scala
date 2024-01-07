@@ -42,5 +42,6 @@ class MlirCompilSpec extends AnyFunSuite {
   doTest("monophi2")
   doTest("generic1")
   doTest("loopWithPass")
+  doTest("strConcat")
 
 }
