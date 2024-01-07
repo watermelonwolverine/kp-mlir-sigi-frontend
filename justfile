@@ -22,6 +22,10 @@ interpretSigi *ARGS:
 repl:
     {{stagedir}}/repl
 
+## Used in combination with the "Attach" launch configuration in VSCode
+debugRepl:
+    {{stagedir}}/repl -agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=localhost:5005
+
 # setup commands
 
 # Install sdkman if you haven't already

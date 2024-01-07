@@ -21,6 +21,7 @@
     // This target can be used to attach to a already running process
     // The process needs to be started with -agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=localhost:5005
     // Example: /target/universal/stage/bin/repl -agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=localhost:5005
+    // Use the recipe `just debugRepl`
     // This is the only way to get terminal the IO working using DevContainer (at least it's the only way I found)
     {
         "type": "scala",
@@ -30,6 +31,7 @@
         "hostName": "localhost",
         "port": 5005
     },
+    // Click on "Debug Anyway" on the appearing dialog
     {
         "type": "scala",
         "request": "attach",
@@ -37,6 +39,7 @@
         "buildTarget": "root",
         "hostName": "localhost",
         "port": 5005,
+        // TODO fix the pop-up dialogue
         "preLaunchTask": "Launch repl"
     },
     {

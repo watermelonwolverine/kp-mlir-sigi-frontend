@@ -9,6 +9,7 @@
                 "-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=localhost:5005"
             ],
             "isBackground": true
+            // TODO: Implement a problem matcher to get rid of the pop-up dialog telling the user that the task cannot be tracked
         }
     ]
 }
