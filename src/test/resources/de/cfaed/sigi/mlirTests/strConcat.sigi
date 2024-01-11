@@ -21,5 +21,12 @@ let helloworld3 =
 concatWorld
 show;;
 
-helloworld0 helloworld1 helloworld2 helloworld3
+let helloworld4: str, int -> =
+  -> text, n;
+  if (n = 0) 
+    pass
+  else
+    text pp (n - 1) helloworld4;;
+
+helloworld0 helloworld1 helloworld2 helloworld3 "Hello World!" 3 helloworld4
 
